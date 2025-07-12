@@ -29,6 +29,41 @@
     .timer-settings label {
       font-size: 14px;
     }
+    
+    /* 変則将棋モード設定エリア */
+    .variant-settings {
+      margin-bottom: 10px;
+      padding: 10px;
+      background: #EFEAE2;
+      border: 1px solid #BFA37E;
+      border-radius: 5px;
+    }
+    .variant-settings h3 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+      text-align: center;
+    }
+    .variant-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+    .variant-checkboxes label {
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .variant-checkboxes input[type="checkbox"] {
+      margin-right: 5px;
+    }
+    .variant-detail {
+      margin-top: 10px;
+      padding: 5px;
+      background: #FDF8F2;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    
     /* メインコンテナ：タイマーとゲームエリア */
     #main-container {
       display: flex;
@@ -87,6 +122,57 @@
     }
     table.board td.selected { background-color: #E0F7FA; }
     table.board td.highlight { background-color: #BBDEFB; }
+    table.board td.shadow-piece { background-color: #FFE0E0; }
+    
+    /* かくし将棋用の配置フェーズ */
+    .setup-phase {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+    .setup-modal {
+      background: #FDF8F2;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      max-width: 90%;
+      max-height: 90%;
+      overflow-y: auto;
+    }
+    .setup-pieces {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      justify-content: center;
+      margin: 10px 0;
+    }
+    .setup-piece {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      font-size: 16px;
+      font-weight: bold;
+      color: #5A3B1C;
+      background: linear-gradient(135deg, #FDF0D5, #E8C699);
+      border: 2px solid #7B5E3A;
+      clip-path: polygon(50% 0%, 100% 25%, 92% 100%, 8% 100%, 0% 25%);
+      cursor: pointer;
+      user-select: none;
+    }
+    .setup-piece.selected {
+      background: linear-gradient(135deg, #E0F7FA, #B2EBF2);
+      border-color: #00796B;
+    }
+    
     /* タイマー・時計ボックス */
     .clock {
       position: relative;
@@ -225,6 +311,25 @@
     <span>タイマーモード:</span>
     <label><input type="radio" name="timer-mode" value="instant" checked> 切れ負け</label>
     <label><input type="radio" name="timer-mode" value="delay"> 切れたら10秒</label>
+  </div>
+
+  <!-- 変則将棋モード設定 -->
+  <div class="variant-settings">
+    <h3>変則将棋モード</h3>
+    <div class="variant-checkboxes">
+      <label><input type="checkbox" id="shadow-shogi"> 影武者将棋</label>
+      <label><input type="checkbox" id="hidden-shogi"> かくし将棋</label>
+      <label><input type="checkbox" id="double-move"> 2手指し将棋</label>
+      <label><input type="checkbox" id="reflection-angle"> 反射角</label>
+      <label><input type="checkbox" id="double-pawn"> 2歩あり将棋</label>
+      <label><input type="checkbox" id="capital-return"> 資本還元将棋</label>
+      <label><input type="checkbox" id="check-shogi"> 王手将棋</label>
+    </div>
+    <div class="variant-detail">
+      <div id="capital-return-setting" style="display: none;">
+        資本還元将棋の持ち駒上限: <input type="number" id="capital-limit" value="4" min="1" max="10"> 枚
+      </div>
+    </div>
   </div>
   
   <!-- メインコンテナ -->
@@ -389,13 +494,29 @@
         if (gameState.activePlayer === "sente" && delayActivatedSente) { senteTime = delayTime; }
         else if (gameState.activePlayer === "gote" && delayActivatedGote) { goteTime = delayTime; }
       }
+      
+      // 2手指し将棋の場合
+      if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
+        gameState.moveCountInTurn = 1;
+        updateMessage();
+        return; // ターン変更なし
+      }
+      
       gameState.activePlayer = (gameState.activePlayer === "sente") ? "gote" : "sente";
+      gameState.moveCountInTurn = 0;
       updateMessage();
       switchClock();
     }
 
     function updateMessage() {
-      document.getElementById("message").textContent = "";
+      const currentPlayer = getRoleName(gameState.activePlayer);
+      let message = `${currentPlayer}の番`;
+      if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
+        message += " (1手目)";
+      } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
+        message += " (2手目)";
+      }
+      document.getElementById("message").textContent = message;
     }
     // パート3
   </script>
@@ -466,7 +587,7 @@
           moves = moves.concat(getSlidingMoves(state, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
           break;
         case "bishop":
-          moves = moves.concat(getSlidingMoves(state, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          moves = moves.concat(getBishopMoves(state, r, c, owner));
           break;
         case "rook_promoted":
           moves = moves.concat(getSlidingMoves(state, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
@@ -477,7 +598,7 @@
           });
           break;
         case "bishop_promoted":
-          moves = moves.concat(getSlidingMoves(state, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          moves = moves.concat(getBishopMoves(state, r, c, owner));
           [[-1,0],[1,0],[0,-1],[0,1]].forEach(off => {
             const nr = r + off[0], nc = c + off[1];
             if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
@@ -486,6 +607,65 @@
           break;
       }
     }
+    return moves;
+  }
+
+  // 角行の移動（反射角対応）
+  function getBishopMoves(state, r, c, owner) {
+    const directions = [[-1,-1],[-1,1],[1,-1],[1,1]];
+    let moves = [];
+    
+    // 通常の角行移動
+    moves = moves.concat(getSlidingMoves(state, r, c, directions));
+    
+    // 反射角が有効な場合は反射移動も追加
+    if (state.variants.reflectionAngle) {
+      directions.forEach(dir => {
+        let nr = r + dir[0], nc = c + dir[1];
+        while (inBounds(nr, nc)) {
+          if (state.board[nr][nc]) {
+            if (state.board[nr][nc].owner !== owner) {
+              moves.push({ r: nr, c: nc });
+            }
+            break;
+          } else {
+            moves.push({ r: nr, c: nc });
+          }
+          nr += dir[0];
+          nc += dir[1];
+        }
+        
+        // 盤の端に到達した場合、反射
+        if (!inBounds(nr, nc)) {
+          let reflectedDir = [...dir];
+          
+          // 反射方向を計算
+          if (nr < 0 || nr >= 9) reflectedDir[0] = -reflectedDir[0];
+          if (nc < 0 || nc >= 9) reflectedDir[1] = -reflectedDir[1];
+          
+          // 反射後の位置を計算
+          nr = Math.max(0, Math.min(8, nr));
+          nc = Math.max(0, Math.min(8, nc));
+          nr += reflectedDir[0];
+          nc += reflectedDir[1];
+          
+          // 反射後の移動
+          while (inBounds(nr, nc)) {
+            if (state.board[nr][nc]) {
+              if (state.board[nr][nc].owner !== owner) {
+                moves.push({ r: nr, c: nc });
+              }
+              break;
+            } else {
+              moves.push({ r: nr, c: nc });
+            }
+            nr += reflectedDir[0];
+            nc += reflectedDir[1];
+          }
+        }
+      });
+    }
+    
     return moves;
   }
 
@@ -547,7 +727,7 @@
           moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
           break;
         case "bishop":
-          moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          moves = moves.concat(getBishopMoves(gameState, r, c, owner));
           break;
         case "rook_promoted":
           moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
@@ -558,7 +738,7 @@
           });
           break;
         case "bishop_promoted":
-          moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          moves = moves.concat(getBishopMoves(gameState, r, c, owner));
           [[-1,0],[1,0],[0,-1],[0,1]].forEach(off => {
             const nr = r + off[0], nc = c + off[1];
             if (inBounds(nr, nc) && (!gameState.board[nr][nc] || gameState.board[nr][nc].owner !== owner))
@@ -567,6 +747,12 @@
           break;
       }
     }
+    
+    // 影武者将棋の場合、自分の玉に王手をかけられる手でもOK
+    if (gameState.variants.shadowShogi) {
+      return moves;
+    }
+    
     return moves.filter(move => isMoveSafe(piece, r, c, move.r, move.c));
   }
 
@@ -574,6 +760,12 @@
     const clone = cloneGameState(gameState);
     clone.board[toRow][toCol] = clone.board[fromRow][fromCol];
     clone.board[fromRow][fromCol] = null;
+    
+    // 影武者将棋の場合、玉の安全性チェックをスキップ
+    if (gameState.variants.shadowShogi) {
+      return true;
+    }
+    
     return !isKingInCheckInState(clone, piece.owner);
   }
 
@@ -647,12 +839,20 @@
   function isDropSafe(piece, dropRow, dropCol) {
     const clone = cloneGameState(gameState);
     clone.board[dropRow][dropCol] = piece;
+    
+    // 影武者将棋の場合、玉の安全性チェックをスキップ
+    if (gameState.variants.shadowShogi) {
+      return true;
+    }
+    
     return !isKingInCheckInState(clone, piece.owner);
   }
 
   function isLegalDrop(piece, r, c) {
     if (gameState.board[r][c] !== null) return false;
-    if (piece.type === "pawn") {
+    
+    // 2歩あり将棋でない場合、2歩をチェック
+    if (piece.type === "pawn" && !gameState.variants.doublePawn) {
       for (let row = 0; row < 9; row++) {
         const p = gameState.board[row][c];
         if (p && p.owner === piece.owner && p.type === "pawn" && !p.promoted) {
@@ -660,9 +860,13 @@
           return false;
         }
       }
+    }
+    
+    if (piece.type === "pawn") {
       if (piece.owner === "sente" && r === 0) { alert("そこには打てません。"); return false; }
       if (piece.owner === "gote" && r === 8) { alert("そこには打てません。"); return false; }
     }
+    
     if (!isDropSafe(piece, r, c)) { alert("ドロップ後に自玉が危険です。"); return false; }
     return true;
   }
@@ -670,9 +874,54 @@
   async function movePiece(fromRow, fromCol, toRow, toCol) {
     const piece = gameState.board[fromRow][fromCol];
     const target = gameState.board[toRow][toCol];
-    if (target) { capturePiece(target); }
+    
+    // 王手将棋の場合、王手をかけたかチェック
+    if (gameState.variants.checkShogi) {
+      const clone = cloneGameState(gameState);
+      clone.board[toRow][toCol] = clone.board[fromRow][fromCol];
+      clone.board[fromRow][fromCol] = null;
+      
+      const opponent = (piece.owner === "sente") ? "gote" : "sente";
+      
+      // 影武者将棋も有効な場合、影武者駒への王手をチェック
+      if (gameState.variants.shadowShogi) {
+        const shadowPiece = findShadowPiece(clone, opponent);
+        if (shadowPiece && isShadowPieceInCheck(clone, shadowPiece, piece.owner)) {
+          alert(`${getRoleName(piece.owner)}の勝ちです！影武者駒に王手をかけました。`);
+          return;
+        }
+      }
+      
+      // 通常の王手チェック
+      if (isKingInCheckInState(clone, opponent)) {
+        alert(`${getRoleName(piece.owner)}の勝ちです！王手をかけました。`);
+        return;
+      }
+    }
+    
+    if (target) { 
+      // 影武者将棋で影武者駒を取った場合
+      if (gameState.variants.shadowShogi && isTargetShadowPiece(target)) {
+        alert(`${getRoleName(piece.owner)}の勝ちです！影武者駒を取りました。`);
+        return;
+      }
+      capturePiece(target); 
+    }
+    
     gameState.board[toRow][toCol] = piece;
     gameState.board[fromRow][fromCol] = null;
+    
+    // 資本還元将棋の手駒上限チェック
+    if (gameState.variants.capitalReturn) {
+      const handCount = gameState.activePlayer === "sente" ? 
+        gameState.senteHand.length : gameState.goteHand.length;
+      const limit = parseInt(document.getElementById("capital-limit").value);
+      if (handCount > limit) {
+        alert(`${getRoleName(gameState.activePlayer)}の負けです！持ち駒が${limit}枚を超えました。`);
+        return;
+      }
+    }
+    
     const promotionZone = (piece.owner === "sente") ? [0, 1, 2] : [6, 7, 8];
     if (!piece.promoted && isPromotable(piece.type)) {
       if (promotionZone.includes(fromRow) || promotionZone.includes(toRow)) {
@@ -749,9 +998,53 @@
     return null;
   }
 
+  // 影武者将棋関連の関数
+  function findShadowPiece(state, owner) {
+    const shadowPieceId = owner === "sente" ? state.shadowPieces.sente : state.shadowPieces.gote;
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = state.board[r][c];
+        if (p && p.owner === owner && p.id === shadowPieceId) {
+          return { piece: p, r: r, c: c };
+        }
+      }
+    }
+    return null;
+  }
+
+  function isTargetShadowPiece(target) {
+    const shadowPieceId = target.owner === "sente" ? 
+      gameState.shadowPieces.sente : gameState.shadowPieces.gote;
+    return target.id === shadowPieceId;
+  }
+
+  function isShadowPieceInCheck(state, shadowPiece, attacker) {
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = state.board[r][c];
+        if (p && p.owner === attacker) {
+          const moves = getLegalMovesInState(state, p, r, c);
+          for (const move of moves) {
+            if (move.r === shadowPiece.r && move.c === shadowPiece.c) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   async function handleCellClick() {
     const r = parseInt(this.dataset.row);
     const c = parseInt(this.dataset.col);
+    
+    // かくし将棋の配置フェーズの場合
+    if (gameState.setupPhase) {
+      setupPieceClick(r, c);
+      return;
+    }
+    
     if (gameState.selected && !gameState.selected.hand &&
         gameState.selected.row === r && gameState.selected.col === c) {
       gameState.selected = null;
@@ -761,6 +1054,28 @@
     }
     if (gameState.selected && gameState.selected.hand) {
       if (gameState.board[r][c] === null && isLegalDrop(gameState.selected.piece, r, c)) {
+        // 王手将棋の場合、駒を打って王手をかけたかチェック
+        if (gameState.variants.checkShogi) {
+          const clone = cloneGameState(gameState);
+          clone.board[r][c] = gameState.selected.piece;
+          const opponent = (gameState.activePlayer === "sente") ? "gote" : "sente";
+          
+          // 影武者将棋も有効な場合、影武者駒への王手をチェック
+          if (gameState.variants.shadowShogi) {
+            const shadowPiece = findShadowPiece(clone, opponent);
+            if (shadowPiece && isShadowPieceInCheck(clone, shadowPiece, gameState.activePlayer)) {
+              alert(`${getRoleName(gameState.activePlayer)}の勝ちです！影武者駒に王手をかけました。`);
+              return;
+            }
+          }
+          
+          // 通常の王手チェック
+          if (isKingInCheckInState(clone, opponent)) {
+            alert(`${getRoleName(gameState.activePlayer)}の勝ちです！王手をかけました。`);
+            return;
+          }
+        }
+        
         dropPiece(gameState.selected, r, c);
         gameState.moveCount++;
         gameState.selected = null;
@@ -828,6 +1143,17 @@
           td.classList.add("selected");
         if (legalMoves.has(cellId(r, c)))
           td.classList.add("highlight");
+        
+        // 影武者将棋で影武者駒をハイライト（デバッグ用、実際は秘匿）
+        if (gameState.variants.shadowShogi && gameState.board[r][c] && 
+            gameState.board[r][c].id === gameState.shadowPieces.sente) {
+          // td.classList.add("shadow-piece"); // 実際は表示しない
+        }
+        if (gameState.variants.shadowShogi && gameState.board[r][c] && 
+            gameState.board[r][c].id === gameState.shadowPieces.gote) {
+          // td.classList.add("shadow-piece"); // 実際は表示しない
+        }
+        
         td.addEventListener("click", handleCellClick);
         const piece = gameState.board[r][c];
         if (piece) {
@@ -843,6 +1169,7 @@
     }
     renderHands();
     updateHandPiecesSize();
+    updateBoardPiecesFontSize();
   }
 
   function renderHands() {
@@ -936,50 +1263,287 @@
   }
 
   function initGame() {
+    // 変則将棋モードの設定を取得
+    const variants = {
+      shadowShogi: document.getElementById("shadow-shogi").checked,
+      hiddenShogi: document.getElementById("hidden-shogi").checked,
+      doubleMove: document.getElementById("double-move").checked,
+      reflectionAngle: document.getElementById("reflection-angle").checked,
+      doublePawn: document.getElementById("double-pawn").checked,
+      capitalReturn: document.getElementById("capital-return").checked,
+      checkShogi: document.getElementById("check-shogi").checked
+    };
+    
     gameState = {
       board: [],
       activePlayer: swapped ? "gote" : "sente",
       senteHand: [],
       goteHand: [],
       selected: null,
-      moveCount: 0
+      moveCount: 0,
+      moveCountInTurn: 0,
+      variants: variants,
+      shadowPieces: { sente: null, gote: null },
+      setupPhase: variants.hiddenShogi ? "sente" : null,
+      pieceIdCounter: 0
     };
+    
     for (let r = 0; r < 9; r++) { gameState.board.push(new Array(9).fill(null)); }
-    // 後手初期配置（上段）パート4
-    gameState.board[0][0] = { type: 'lance', owner: "gote", promoted: false };
-    gameState.board[0][1] = { type: 'knight', owner: "gote", promoted: false };
-    gameState.board[0][2] = { type: 'silver', owner: "gote", promoted: false };
-    gameState.board[0][3] = { type: 'gold', owner: "gote", promoted: false };
-    gameState.board[0][4] = { type: 'king', owner: "gote", promoted: false };
-    gameState.board[0][5] = { type: 'gold', owner: "gote", promoted: false };
-    gameState.board[0][6] = { type: 'silver', owner: "gote", promoted: false };
-    gameState.board[0][7] = { type: 'knight', owner: "gote", promoted: false };
-    gameState.board[0][8] = { type: 'lance', owner: "gote", promoted: false };
-    gameState.board[1][1] = { type: 'rook', owner: "gote", promoted: false };
-    gameState.board[1][7] = { type: 'bishop', owner: "gote", promoted: false };
-    for (let c = 0; c < 9; c++) { gameState.board[2][c] = { type: 'pawn', owner: "gote", promoted: false }; }
-    // 先手初期配置（下段）
-    for (let c = 0; c < 9; c++) { gameState.board[6][c] = { type: 'pawn', owner: "sente", promoted: false }; }
-    gameState.board[7][1] = { type: 'bishop', owner: "sente", promoted: false };
-    gameState.board[7][7] = { type: 'rook', owner: "sente", promoted: false };
-    gameState.board[8][0] = { type: 'lance', owner: "sente", promoted: false };
-    gameState.board[8][1] = { type: 'knight', owner: "sente", promoted: false };
-    gameState.board[8][2] = { type: 'silver', owner: "sente", promoted: false };
-    gameState.board[8][3] = { type: 'gold', owner: "sente", promoted: false };
-    gameState.board[8][4] = { type: 'king', owner: "sente", promoted: false };
-    gameState.board[8][5] = { type: 'gold', owner: "sente", promoted: false };
-    gameState.board[8][6] = { type: 'silver', owner: "sente", promoted: false };
-    gameState.board[8][7] = { type: 'knight', owner: "sente", promoted: false };
-    gameState.board[8][8] = { type: 'lance', owner: "sente", promoted: false };
-
+    
+    if (variants.hiddenShogi) {
+      // かくし将棋の場合、駒を駒台に配置
+      setupHiddenShogi();
+    } else {
+      // 通常の初期配置
+      setupNormalGame();
+    }
+    
     updateMessage();
     renderBoard();
     initializeTimer();
-    startTimerForPlayer(gameState.activePlayer);
+    
+    if (!variants.hiddenShogi) {
+      startTimerForPlayer(gameState.activePlayer);
+    }
+    
     updateRoleDisplays();
   }
 
-  document.addEventListener("DOMContentLoaded", initGame);
+  function setupNormalGame() {
+    // 後手初期配置（上段）パート4
+    gameState.board[0][0] = { type: 'lance', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][1] = { type: 'knight', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][2] = { type: 'silver', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][3] = { type: 'gold', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][4] = { type: 'king', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][5] = { type: 'gold', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][6] = { type: 'silver', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][7] = { type: 'knight', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[0][8] = { type: 'lance', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[1][1] = { type: 'rook', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[1][7] = { type: 'bishop', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ };
+    for (let c = 0; c < 9; c++) { 
+      gameState.board[2][c] = { type: 'pawn', owner: "gote", promoted: false, id: gameState.pieceIdCounter++ }; 
+    }
+    
+    // 先手初期配置（下段）
+    for (let c = 0; c < 9; c++) { 
+      gameState.board[6][c] = { type: 'pawn', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ }; 
+    }
+    gameState.board[7][1] = { type: 'bishop', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[7][7] = { type: 'rook', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][0] = { type: 'lance', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][1] = { type: 'knight', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][2] = { type: 'silver', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][3] = { type: 'gold', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][4] = { type: 'king', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][5] = { type: 'gold', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][6] = { type: 'silver', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][7] = { type: 'knight', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    gameState.board[8][8] = { type: 'lance', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
+    
+    // 影武者将棋の場合、影武者駒を選択
+    if (gameState.variants.shadowShogi) {
+      selectShadowPieces();
+    }
+  }
+
+  function setupHiddenShogi() {
+    // 先手の駒を駒台に配置
+    const senteStartingPieces = [
+      { type: 'lance', count: 2 },
+      { type: 'knight', count: 2 },
+      { type: 'silver', count: 2 },
+      { type: 'gold', count: 2 },
+      { type: 'king', count: 1 },
+      { type: 'rook', count: 1 },
+      { type: 'bishop', count: 1 },
+      { type: 'pawn', count: 9 }
+    ];
+    
+    senteStartingPieces.forEach(pieceInfo => {
+      for (let i = 0; i < pieceInfo.count; i++) {
+        gameState.senteHand.push({
+          type: pieceInfo.type,
+          owner: "sente",
+          promoted: false,
+          id: gameState.pieceIdCounter++
+        });
+      }
+    });
+    
+    // 後手の駒を駒台に配置
+    const goteStartingPieces = [
+      { type: 'lance', count: 2 },
+      { type: 'knight', count: 2 },
+      { type: 'silver', count: 2 },
+      { type: 'gold', count: 2 },
+      { type: 'king', count: 1 },
+      { type: 'rook', count: 1 },
+      { type: 'bishop', count: 1 },
+      { type: 'pawn', count: 9 }
+    ];
+    
+    goteStartingPieces.forEach(pieceInfo => {
+      for (let i = 0; i < pieceInfo.count; i++) {
+        gameState.goteHand.push({
+          type: pieceInfo.type,
+          owner: "gote",
+          promoted: false,
+          id: gameState.pieceIdCounter++
+        });
+      }
+    });
+    
+    // 先手の配置フェーズから開始
+    showSetupPhase();
+  }
+
+  function selectShadowPieces() {
+    // 影武者駒をランダムに選択（玉以外から）
+    const sentePieces = [];
+    const gotePieces = [];
+    
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const piece = gameState.board[r][c];
+        if (piece && piece.type !== "king") {
+          if (piece.owner === "sente") {
+            sentePieces.push(piece.id);
+          } else {
+            gotePieces.push(piece.id);
+          }
+        }
+      }
+    }
+    
+    gameState.shadowPieces.sente = sentePieces[Math.floor(Math.random() * sentePieces.length)];
+    gameState.shadowPieces.gote = gotePieces[Math.floor(Math.random() * gotePieces.length)];
+  }
+
+  function showSetupPhase() {
+    const setupDiv = document.createElement("div");
+    setupDiv.className = "setup-phase";
+    setupDiv.innerHTML = `
+      <div class="setup-modal">
+        <h2>${gameState.setupPhase === "sente" ? "先手" : "後手"}の駒配置</h2>
+        <p>手前3列（${gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目"}）に駒を配置してください</p>
+        <div class="setup-pieces" id="setup-pieces"></div>
+        <button onclick="finishSetupPhase()">配置完了</button>
+      </div>
+    `;
+    document.body.appendChild(setupDiv);
+    
+    updateSetupPieces();
+  }
+
+  function updateSetupPieces() {
+    const setupPiecesDiv = document.getElementById("setup-pieces");
+    setupPiecesDiv.innerHTML = "";
+    
+    const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
+    hand.forEach((piece, index) => {
+      const pieceDiv = document.createElement("div");
+      pieceDiv.className = "setup-piece";
+      pieceDiv.textContent = getPieceSymbol(piece);
+      pieceDiv.onclick = () => selectSetupPiece(index);
+      setupPiecesDiv.appendChild(pieceDiv);
+    });
+  }
+
+  let selectedSetupPiece = null;
+
+  function selectSetupPiece(index) {
+    selectedSetupPiece = index;
+    document.querySelectorAll('.setup-piece').forEach((piece, i) => {
+      piece.classList.toggle('selected', i === index);
+    });
+  }
+
+  // かくし将棋の配置機能
+  window.setupPieceClick = function(r, c) {
+    if (selectedSetupPiece !== null) {
+      const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
+      const piece = hand[selectedSetupPiece];
+      
+      // 配置可能な範囲をチェック
+      const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
+      if (!validRows.includes(r)) {
+        alert("配置可能な範囲ではありません。");
+        return;
+      }
+      
+      if (gameState.board[r][c] !== null) {
+        alert("既に駒が配置されています。");
+        return;
+      }
+      
+      // 駒を配置
+      gameState.board[r][c] = piece;
+      hand.splice(selectedSetupPiece, 1);
+      selectedSetupPiece = null;
+      
+      // 表示更新
+      updateSetupPieces();
+      renderBoard();
+    }
+  };
+
+  // かくし将棋の配置完了
+  window.finishSetupPhase = function() {
+    document.querySelector('.setup-phase').remove();
+    
+    if (gameState.setupPhase === "sente") {
+      // 先手の配置が完了、後手の番
+      gameState.setupPhase = "gote";
+      showSetupPhase();
+    } else {
+      // 後手の配置も完了、ゲーム開始
+      gameState.setupPhase = null;
+      
+      // 影武者将棋の場合、影武者駒を選択
+      if (gameState.variants.shadowShogi) {
+        selectShadowPiecesForHiddenShogi();
+      }
+      
+      startTimerForPlayer(gameState.activePlayer);
+    }
+  };
+
+  function selectShadowPiecesForHiddenShogi() {
+    const sentePieces = [];
+    const gotePieces = [];
+    
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const piece = gameState.board[r][c];
+        if (piece && piece.type !== "king") {
+          if (piece.owner === "sente") {
+            sentePieces.push(piece.id);
+          } else {
+            gotePieces.push(piece.id);
+          }
+        }
+      }
+    }
+    
+    if (sentePieces.length > 0) {
+      gameState.shadowPieces.sente = sentePieces[Math.floor(Math.random() * sentePieces.length)];
+    }
+    if (gotePieces.length > 0) {
+      gameState.shadowPieces.gote = gotePieces[Math.floor(Math.random() * gotePieces.length)];
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function() {
+    // 変則将棋モードの設定変更時の処理
+    document.getElementById("capital-return").addEventListener("change", function() {
+      document.getElementById("capital-return-setting").style.display = 
+        this.checked ? "block" : "none";
+    });
+    
+    initGame();
+  });
 </script>
 <script>
   // プレイヤーの向きに合わせたカスタムプロモーション確認モーダル
