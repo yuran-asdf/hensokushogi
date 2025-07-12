@@ -142,9 +142,12 @@
       padding: 20px;
       border-radius: 10px;
       text-align: center;
-      max-width: 90%;
-      max-height: 90%;
+      max-width: 95%;
+      max-height: 95%;
       overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     .setup-pieces {
       display: flex;
@@ -171,6 +174,64 @@
     .setup-piece.selected {
       background: linear-gradient(135deg, #E0F7FA, #B2EBF2);
       border-color: #00796B;
+    }
+    
+    /* 配置フェーズ用の盤面 */
+    .setup-board-container {
+      width: 300px;
+      height: 300px;
+      background: #FDF8F2;
+      border: 1px solid #BFA37E;
+      overflow: hidden;
+      position: relative;
+      margin: 10px 0;
+    }
+    
+    .setup-board-container .board {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      transform: translate(-50%, -50%) rotate(90deg);
+      transform-origin: center;
+      border-collapse: collapse;
+    }
+    
+    .setup-board-container td {
+      width: calc(100% / 9);
+      height: calc(100% / 9);
+      border: 1px solid #DDD;
+      background: #FDF8F2;
+      text-align: center;
+      vertical-align: middle;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .setup-board-container td.valid-area {
+      background-color: #E8F4FD !important;
+      border-color: #4CAF50 !important;
+    }
+    
+    .setup-board-container .piece {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 80%;
+      height: 80%;
+      font-size: 0.8em;
+      font-weight: bold;
+      color: #5A3B1C;
+      background: linear-gradient(135deg, #FDF0D5, #E8C699);
+      border: 2px solid #7B5E3A;
+      clip-path: polygon(50% 0%, 100% 25%, 92% 100%, 8% 100%, 0% 25%);
+      user-select: none;
+      transform: translate(15%, 0%) rotate(0deg);
+    }
+    
+    .setup-board-container .piece.gote {
+      transform: translate(15%, 0%) rotate(180deg);
     }
     
     /* タイマー・時計ボックス */
@@ -1135,6 +1196,11 @@
   }
 
   function renderBoard() {
+    // 配置フェーズ中は通常の盤面を表示しない
+    if (gameState.setupPhase) {
+      return;
+    }
+    
     const boardBody = document.getElementById("board-body");
     boardBody.innerHTML = "";
     for (let r = 0; r < 9; r++) {
@@ -1182,6 +1248,11 @@
     const goteHandArea = document.getElementById("gote-hand-area");
     senteHandArea.innerHTML = "";
     goteHandArea.innerHTML = "";
+    
+    // 配置フェーズ中は持ち駒を表示しない
+    if (gameState.setupPhase) {
+      return;
+    }
     
     senteHandArea.style.height = "100%";
     senteHandArea.style.width = "100%";
@@ -1407,6 +1478,7 @@
     });
     
     // 先手の配置フェーズから開始
+    pauseTimer();
     showSetupPhase();
   }
 
@@ -1439,9 +1511,16 @@
       <div class="setup-modal">
         <h2>${gameState.setupPhase === "sente" ? "先手" : "後手"}の駒配置</h2>
         <p>手前3列（${gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目"}）に駒を配置してください</p>
-        <p>下の駒を選択してから、青い配置可能エリアをクリックして配置します。</p>
-        <p><strong>配置しなかった駒は消えてゲームで使用できなくなります。</strong></p>
+        <p>下の駒を選択してから、緑の配置可能エリアをクリックして配置します。</p>
+        
+        <div class="setup-board-container">
+          <table class="board">
+            <tbody id="setup-board-body"></tbody>
+          </table>
+        </div>
+        
         <div class="setup-pieces" id="setup-pieces"></div>
+        <p><strong>配置しなかった駒は消えてゲームで使用できなくなります。</strong></p>
         <button onclick="finishSetupPhase()">配置完了</button>
       </div>
     `;
@@ -1449,7 +1528,6 @@
     
     updateSetupPieces();
     renderSetupBoard();
-    renderHands();
   }
 
   function updateSetupPieces() {
@@ -1469,8 +1547,10 @@
   }
   
   function renderSetupBoard() {
-    // 配置フェーズ中は相手の駒を表示しない
-    const boardBody = document.getElementById("board-body");
+    // 配置フェーズ専用の盤面を表示
+    const boardBody = document.getElementById("setup-board-body");
+    if (!boardBody) return;
+    
     boardBody.innerHTML = "";
     for (let r = 0; r < 9; r++) {
       const tr = document.createElement("tr");
@@ -1482,7 +1562,7 @@
         // 配置可能エリアをハイライト
         const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
         if (validRows.includes(r)) {
-          td.style.backgroundColor = "#F0F8FF";
+          td.classList.add("valid-area");
         }
         
         td.addEventListener("click", handleCellClick);
@@ -1498,7 +1578,6 @@
       }
       boardBody.appendChild(tr);
     }
-    updateBoardPiecesFontSize();
   }
 
   let selectedSetupPiece = null;
@@ -1540,7 +1619,6 @@
       // 表示更新
       updateSetupPieces();
       renderSetupBoard();
-      renderHands();
       
       // 選択状態をリセット
       document.querySelectorAll('.setup-piece').forEach(piece => {
@@ -1567,6 +1645,7 @@
     } else {
       // 後手の配置も完了、ゲーム開始
       gameState.setupPhase = null;
+      updateMessage();
       
       // 影武者将棋の場合、影武者駒を選択
       if (gameState.variants.shadowShogi) {
@@ -1575,6 +1654,7 @@
       
       // 通常の盤面表示に戻す
       renderBoard();
+      updateMessage();
       startTimerForPlayer(gameState.activePlayer);
     }
   };
