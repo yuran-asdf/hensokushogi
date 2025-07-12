@@ -124,53 +124,20 @@
     table.board td.highlight { background-color: #BBDEFB; }
     table.board td.shadow-piece { background-color: #FFE0E0; }
     
-    /* かくし将棋用の配置フェーズ */
-    .setup-phase {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
+    /* 配置フェーズ用のスタイル */
+    #setup-complete-button {
+      background-color: #4CAF50 !important;
+      color: white !important;
+      border: none !important;
+      padding: 10px 20px !important;
+      font-size: 18px !important;
+      border-radius: 5px !important;
+      cursor: pointer !important;
+      margin: 0 5px !important;
     }
-    .setup-modal {
-      background: #FDF8F2;
-      padding: 20px;
-      border-radius: 10px;
-      text-align: center;
-      max-width: 90%;
-      max-height: 90%;
-      overflow-y: auto;
-    }
-    .setup-pieces {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      justify-content: center;
-      margin: 10px 0;
-    }
-    .setup-piece {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 40px;
-      height: 40px;
-      font-size: 16px;
-      font-weight: bold;
-      color: #5A3B1C;
-      background: linear-gradient(135deg, #FDF0D5, #E8C699);
-      border: 2px solid #7B5E3A;
-      clip-path: polygon(50% 0%, 100% 25%, 92% 100%, 8% 100%, 0% 25%);
-      cursor: pointer;
-      user-select: none;
-    }
-    .setup-piece.selected {
-      background: linear-gradient(135deg, #E0F7FA, #B2EBF2);
-      border-color: #00796B;
+    
+    #setup-complete-button:hover {
+      background-color: #45a049 !important;
     }
     
     /* タイマー・時計ボックス */
@@ -509,12 +476,19 @@
     }
 
     function updateMessage() {
-      const currentPlayer = getRoleName(gameState.activePlayer);
-      let message = `${currentPlayer}の番`;
-      if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
-        message += " (1手目)";
-      } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
-        message += " (2手目)";
+      let message;
+      if (gameState.setupPhase) {
+        const player = gameState.setupPhase === "sente" ? "先手" : "後手";
+        const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
+        message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください`;
+      } else {
+        const currentPlayer = getRoleName(gameState.activePlayer);
+        message = `${currentPlayer}の番`;
+        if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
+          message += " (1手目)";
+        } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
+          message += " (2手目)";
+        }
       }
       document.getElementById("message").textContent = message;
     }
@@ -1041,7 +1015,38 @@
     
     // かくし将棋の配置フェーズの場合
     if (gameState.setupPhase) {
-      setupPieceClick(r, c);
+      // 持ち駒が選択されている場合のみ配置可能
+      if (gameState.selected && gameState.selected.hand && gameState.selected.owner === gameState.setupPhase) {
+        const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
+        if (!validRows.includes(r)) {
+          alert("配置可能な範囲ではありません。");
+          return;
+        }
+        
+        // 既に自分の駒がある場合は入れ替え
+        if (gameState.board[r][c] !== null && gameState.board[r][c].owner === gameState.setupPhase) {
+          // 既存の駒を持ち駒に戻す
+          const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
+          hand.push(gameState.board[r][c]);
+        } else if (gameState.board[r][c] !== null) {
+          alert("そこには配置できません。");
+          return;
+        }
+        
+        // 駒を配置
+        const piece = gameState.selected.piece;
+        gameState.board[r][c] = piece;
+        
+        // 持ち駒から削除
+        const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
+        hand.splice(gameState.selected.index, 1);
+        
+        // 選択状態をリセット
+        gameState.selected = null;
+        
+        // 表示更新
+        renderBoard();
+      }
       return;
     }
     
@@ -1138,25 +1143,38 @@
         const td = document.createElement("td");
         td.dataset.row = r;
         td.dataset.col = c;
-        if (gameState.selected && !gameState.selected.hand &&
-            gameState.selected.row === r && gameState.selected.col === c)
-          td.classList.add("selected");
-        if (legalMoves.has(cellId(r, c)))
-          td.classList.add("highlight");
         
-        // 影武者将棋で影武者駒をハイライト（デバッグ用、実際は秘匿）
-        if (gameState.variants.shadowShogi && gameState.board[r][c] && 
-            gameState.board[r][c].id === gameState.shadowPieces.sente) {
-          // td.classList.add("shadow-piece"); // 実際は表示しない
-        }
-        if (gameState.variants.shadowShogi && gameState.board[r][c] && 
-            gameState.board[r][c].id === gameState.shadowPieces.gote) {
-          // td.classList.add("shadow-piece"); // 実際は表示しない
+        // 配置フェーズ中の配置可能エリアハイライト
+        if (gameState.setupPhase) {
+          const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
+          if (validRows.includes(r)) {
+            td.style.backgroundColor = "#E8F5E8";
+            td.style.borderColor = "#4CAF50";
+          }
+        } else {
+          // 通常ゲーム中のハイライト
+          if (gameState.selected && !gameState.selected.hand &&
+              gameState.selected.row === r && gameState.selected.col === c)
+            td.classList.add("selected");
+          if (legalMoves.has(cellId(r, c)))
+            td.classList.add("highlight");
+          
+          // 影武者将棋で影武者駒をハイライト（デバッグ用、実際は秘匿）
+          if (gameState.variants.shadowShogi && gameState.board[r][c] && 
+              gameState.board[r][c].id === gameState.shadowPieces.sente) {
+            // td.classList.add("shadow-piece"); // 実際は表示しない
+          }
+          if (gameState.variants.shadowShogi && gameState.board[r][c] && 
+              gameState.board[r][c].id === gameState.shadowPieces.gote) {
+            // td.classList.add("shadow-piece"); // 実際は表示しない
+          }
         }
         
         td.addEventListener("click", handleCellClick);
         const piece = gameState.board[r][c];
-        if (piece) {
+        
+        // 配置フェーズ中は相手の駒を表示しない
+        if (piece && (!gameState.setupPhase || piece.owner === gameState.setupPhase)) {
           const span = document.createElement("span");
           span.classList.add("piece");
           if (piece.owner === "gote") span.classList.add("gote");
@@ -1177,6 +1195,15 @@
     const goteHandArea = document.getElementById("gote-hand-area");
     senteHandArea.innerHTML = "";
     goteHandArea.innerHTML = "";
+    
+    // 配置フェーズ中は現在配置中のプレイヤーの持ち駒のみ表示
+    if (gameState.setupPhase) {
+      if (gameState.setupPhase === "sente") {
+        goteHandArea.innerHTML = "";
+      } else {
+        senteHandArea.innerHTML = "";
+      }
+    }
     
     senteHandArea.style.height = "100%";
     senteHandArea.style.width = "100%";
@@ -1216,7 +1243,11 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
-        if (gameState.activePlayer === "sente") {
+        // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
+        if (gameState.setupPhase && gameState.setupPhase !== "sente") return;
+        
+        const activePlayer = gameState.setupPhase || gameState.activePlayer;
+        if (activePlayer === "sente") {
           if (gameState.selected && gameState.selected.hand &&
               gameState.selected.owner === "sente" &&
               gameState.selected.index === index)
@@ -1239,7 +1270,11 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
-        if (gameState.activePlayer === "gote") {
+        // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
+        if (gameState.setupPhase && gameState.setupPhase !== "gote") return;
+        
+        const activePlayer = gameState.setupPhase || gameState.activePlayer;
+        if (activePlayer === "gote") {
           if (gameState.selected && gameState.selected.hand &&
               gameState.selected.owner === "gote" &&
               gameState.selected.index === index)
@@ -1396,6 +1431,7 @@
     });
     
     // 先手の配置フェーズから開始
+    pauseTimer();
     showSetupPhase();
   }
 
@@ -1422,90 +1458,70 @@
   }
 
   function showSetupPhase() {
-    const setupDiv = document.createElement("div");
-    setupDiv.className = "setup-phase";
-    setupDiv.innerHTML = `
-      <div class="setup-modal">
-        <h2>${gameState.setupPhase === "sente" ? "先手" : "後手"}の駒配置</h2>
-        <p>手前3列（${gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目"}）に駒を配置してください</p>
-        <div class="setup-pieces" id="setup-pieces"></div>
-        <button onclick="finishSetupPhase()">配置完了</button>
-      </div>
-    `;
-    document.body.appendChild(setupDiv);
+    // 配置完了ボタンを追加
+    const setupButton = document.createElement("button");
+    setupButton.id = "setup-complete-button";
+    setupButton.textContent = "配置完了";
+    setupButton.style.fontSize = "18px";
+    setupButton.style.padding = "10px 20px";
+    setupButton.style.margin = "10px";
+    setupButton.style.backgroundColor = "#4CAF50";
+    setupButton.style.color = "white";
+    setupButton.style.border = "none";
+    setupButton.style.borderRadius = "5px";
+    setupButton.style.cursor = "pointer";
+    setupButton.onclick = finishSetupPhase;
     
-    updateSetupPieces();
-  }
-
-  function updateSetupPieces() {
-    const setupPiecesDiv = document.getElementById("setup-pieces");
-    setupPiecesDiv.innerHTML = "";
+    // リセットボタンの隣に配置
+    const resetContainer = document.querySelector('.reset-container');
+    resetContainer.appendChild(setupButton);
     
-    const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
-    hand.forEach((piece, index) => {
-      const pieceDiv = document.createElement("div");
-      pieceDiv.className = "setup-piece";
-      pieceDiv.textContent = getPieceSymbol(piece);
-      pieceDiv.onclick = () => selectSetupPiece(index);
-      setupPiecesDiv.appendChild(pieceDiv);
-    });
+    // 盤面と駒台を更新
+    renderBoard();
+    updateMessage();
   }
 
-  let selectedSetupPiece = null;
 
-  function selectSetupPiece(index) {
-    selectedSetupPiece = index;
-    document.querySelectorAll('.setup-piece').forEach((piece, i) => {
-      piece.classList.toggle('selected', i === index);
-    });
-  }
-
-  // かくし将棋の配置機能
-  window.setupPieceClick = function(r, c) {
-    if (selectedSetupPiece !== null) {
-      const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
-      const piece = hand[selectedSetupPiece];
-      
-      // 配置可能な範囲をチェック
-      const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
-      if (!validRows.includes(r)) {
-        alert("配置可能な範囲ではありません。");
-        return;
-      }
-      
-      if (gameState.board[r][c] !== null) {
-        alert("既に駒が配置されています。");
-        return;
-      }
-      
-      // 駒を配置
-      gameState.board[r][c] = piece;
-      hand.splice(selectedSetupPiece, 1);
-      selectedSetupPiece = null;
-      
-      // 表示更新
-      updateSetupPieces();
-      renderBoard();
-    }
-  };
 
   // かくし将棋の配置完了
   window.finishSetupPhase = function() {
-    document.querySelector('.setup-phase').remove();
+    // 残った持ち駒を削除
+    if (gameState.setupPhase === "sente") {
+      gameState.senteHand = [];
+    } else {
+      gameState.goteHand = [];
+    }
     
     if (gameState.setupPhase === "sente") {
       // 先手の配置が完了、後手の番
       gameState.setupPhase = "gote";
-      showSetupPhase();
+      
+      // 配置完了ボタンを更新
+      const setupButton = document.getElementById("setup-complete-button");
+      if (setupButton) {
+        setupButton.textContent = "配置完了";
+      }
+      
+      renderBoard();
+      updateMessage();
     } else {
       // 後手の配置も完了、ゲーム開始
       gameState.setupPhase = null;
+      
+      // 配置完了ボタンを削除
+      const setupButton = document.getElementById("setup-complete-button");
+      if (setupButton) {
+        setupButton.remove();
+      }
       
       // 影武者将棋の場合、影武者駒を選択
       if (gameState.variants.shadowShogi) {
         selectShadowPiecesForHiddenShogi();
       }
       
+      // 通常の盤面表示に戻す
+      renderBoard();
+      updateMessage();
       startTimerForPlayer(gameState.activePlayer);
     }
   };
