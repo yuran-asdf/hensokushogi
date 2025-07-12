@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <!-- パート1 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>将棋ゲーム（チェスクロック付き）</title>
+  <style>
+    /* 全要素に box-sizing を適用 */
+    * { 
+      box-sizing: border-box; 
+    }
+    /* 基本スタイル */
+    body {
+      background: #FDF8F2;
+      font-family: "Segoe UI", sans-serif;
+      margin: 20px;
+      padding: 20px;
+      color: #333;
+    }
+    /* タイマー設定エリア */
+    .timer-settings {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      justify-content: center;
+    }
+    .timer-settings label {
+      font-size: 14px;
+    }
+    /* メインコンテナ：タイマーとゲームエリア */
+    #main-container {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    /* タイマーコンテナ（全画面時は非表示） */
+    #sente-timer-container,
+    #gote-timer-container {
+      width: 100px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    /* ゲームエリア（盤と持駒エリア） */
+    #game-area {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+    /* 盤エリア */
+    #board-container {
+      width: 450px;
+      height: 450px;
+      background: #FDF8F2;
+      border: 1px solid #BFA37E;
+      overflow: hidden;
+      position: relative;
+    }
+    /* 盤テーブル：幅・高さを親に合わせ、９分割のセルサイズに */
+    #board-container .board {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      transform: translate(-50%, -50%) rotate(90deg);
+      transform-origin: center;
+      border-collapse: collapse;
+    }
+    /* 各セルは親幅の1/9 */
+    table.board td {
+      width: calc(100% / 9);
+      height: calc(100% / 9);
+      border: 1px solid #DDD;
+      background: #FDF8F2;
+      text-align: center;
+      vertical-align: middle;
+      position: relative;
+      overflow: hidden;
+    }
+    table.board td.selected { background-color: #E0F7FA; }
+    table.board td.highlight { background-color: #BBDEFB; }
+    /* タイマー・時計ボックス */
+    .clock {
+      position: relative;
+      font-size: 24px;
+      font-weight: bold;
+      padding: 5px 40px 5px 10px;
+      background: #EFEAE2;
+      border: 1px solid #BFA37E;
+      border-radius: 5px;
+      width: 100px;
+      text-align: center;
+    }
+    #sente-clock { transform: rotate(90deg); }
+    #gote-clock { transform: rotate(270deg); }
+    #sente-clock .role-display,
+    #gote-clock .role-display {
+      position: absolute;
+      right: -20px;
+      top: 50%;
+      transform: translateY(-50%) rotate(-90deg);
+      font-size: 14px;
+    }
+    #gote-clock .role-display { transform: translateY(-50%) rotate(90deg); }
+    /* 持駒エリア（駒台） */
+    #sente-hand-container,
+    #gote-hand-container {
+      height: 450px;
+      width: 100px;
+      background: #EFEAE2;
+      border: 1px solid #BFA37E;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 5px;
+    }
+    /* 盤上の駒デザイン – 共通（セルの80%） */
+    .piece, .hand-piece {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 80%;
+      height: 80%;
+      font-size: 1em;
+      font-weight: bold;
+      color: #5A3B1C;
+      background: linear-gradient(135deg, #FDF0D5, #E8C699);
+      border: 2px solid #7B5E3A;
+      clip-path: polygon(50% 0%, 100% 25%, 92% 100%, 8% 100%, 0% 25%);
+      user-select: none;
+      cursor: pointer;
+    }
+    /* 盤上の駒の場合 */
+    #board-container .piece { 
+      transform: rotate(0deg); 
+    }
+    #board-container .piece.gote { 
+      transform: rotate(180deg); 
+    }
+    /* 持駒は回転させるが、サイズは JS で動的に調整するため固定指定はせず */
+    .hand-piece { 
+      transform: rotate(90deg);
+    }
+    #gote-hand-container .hand-piece { 
+      transform: rotate(270deg); 
+    }
+    /* 持ち駒が選択されたときのハイライト */
+    .hand-piece.selected {
+      background-color: #E0F7FA;
+      border-color: #00796B;
+      color: #00796B;
+    }
+    /* メッセージ表示 */
+    #message {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    /* リセット・先後入れ替え・全画面モードボタン */
+    .reset-container {
+      margin-top: 10px;
+      text-align: center;
+    }
+    .reset-container button {
+      font-size: 16px;
+      padding: 5px 15px;
+      margin: 0 5px;
+    }
+    
+    /* --- 全画面モード用のスタイル --- */
+    :fullscreen body,
+    :-webkit-full-screen body,
+    :-moz-full-screen body,
+    :-msfullscreen body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    :fullscreen #sente-timer-container,
+    :-webkit-full-screen #sente-timer-container,
+    :-moz-full-screen #sente-timer-container,
+    :-msfullscreen #sente-timer-container,
+    :fullscreen #gote-timer-container,
+    :-webkit-full-screen #gote-timer-container,
+    :-moz-full-screen #gote-timer-container,
+    :-msfullscreen #gote-timer-container {
+      display: none;
+    }
+    :fullscreen #game-area,
+    :-webkit-full-screen #game-area,
+    :-moz-full-screen #game-area,
+    :-msfullscreen #game-area {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+      gap: 0;
+      display: flex;
+      flex-direction: row;
+    }
+    
+    /* 持ち駒サイズ更新は JS に任せるため、ここではダミー関数 */
+    function /* dummy */ updateFullScreenLayout() {}
+  </style>
+</head>
+<body>
+  <!-- タイマー設定 -->
+  <div class="timer-settings">
+    <span>初期時間:</span>
+    <input id="initial-time" type="number" value="10" min="1"> 分
+    <span>タイマーモード:</span>
+    <label><input type="radio" name="timer-mode" value="instant" checked> 切れ負け</label>
+    <label><input type="radio" name="timer-mode" value="delay"> 切れたら10秒</label>
+  </div>
+  
+  <!-- メインコンテナ -->
+  <div id="main-container">
+    <!-- タイマー（通常表示、全画面時は非表示） -->
+    <div id="sente-timer-container">
+      <div id="sente-clock" class="clock">
+        <div class="clock-content">
+          <span class="time-display">10:00</span>
+          <span class="role-display" data-original="先手">先手</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- ゲームエリア：盤と持駒エリア -->
+    <div id="game-area">
+      <div id="sente-hand-container">
+        <div class="hand-area" id="sente-hand-area"></div>
+      </div>
+      <div id="board-container">
+        <table class="board">
+          <tbody id="board-body"></tbody>
+        </table>
+      </div>
+      <div id="gote-hand-container">
+        <div class="hand-area" id="gote-hand-area"></div>
+      </div>
+    </div>
+    
+    <div id="gote-timer-container">
+      <div id="gote-clock" class="clock">
+        <div class="clock-content">
+          <span class="time-display">10:00</span>
+          <span class="role-display" data-original="後手">後手</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- パート2 -->
+  <div id="message"></div>
+
+  <!-- リセット・先後入れ替え・全画面モードボタン -->
+  <div class="reset-container">
+    <button id="reset-button">リセット</button>
+    <button id="swap-button">先後を入れ替える</button>
+    <button id="fullscreen-button">全画面モード</button>
+  </div>
+
+  <!-- タイマー関連スクリプト -->
+  <script>
+    let timerInterval = null;
+    let senteTime = 600;
+    let goteTime = 600;
+    let timerMode = "instant"; // "instant" または "delay"
+    const delayTime = 10;
+    let activeTimerPlayer = null;
+    let delayActivatedSente = false;
+    let delayActivatedGote = false;
+    let swapped = false;
+
+    function formatTime(seconds) {
+      const m = Math.floor(Math.abs(seconds) / 60);
+      const s = Math.abs(seconds) % 60;
+      const sign = seconds < 0 ? "-" : "";
+      return sign + ("0" + m).slice(-2) + ":" + ("0" + s).slice(-2);
+    }
+
+    function updateClockDisplay() {
+      document.querySelector("#sente-clock .time-display").textContent = formatTime(senteTime);
+      document.querySelector("#gote-clock .time-display").textContent = formatTime(goteTime);
+    }
+
+    function getRoleName(player) {
+      return swapped
+        ? (player === "sente" ? "後手" : "先手")
+        : (player === "sente" ? "先手" : "後手");
+    }
+
+    function initializeTimer() {
+      const initialTime = parseInt(document.getElementById("initial-time").value);
+      senteTime = initialTime * 60;
+      goteTime = initialTime * 60;
+      delayActivatedSente = false;
+      delayActivatedGote = false;
+      const radios = document.getElementsByName("timer-mode");
+      for (const radio of radios) {
+        if (radio.checked) { timerMode = radio.value; }
+      }
+      updateClockDisplay();
+    }
+
+    function startTimerForPlayer(player) {
+      activeTimerPlayer = player;
+      if (timerInterval) clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (player === "sente") {
+          if (timerMode === "instant") {
+            senteTime--;
+            if (senteTime <= 0) {
+              clearInterval(timerInterval);
+              alert(`${getRoleName("sente")}の時間切れです！${getRoleName("gote")}の勝ちです。`);
+            }
+          } else if (timerMode === "delay") {
+            if (!delayActivatedSente) {
+              if (senteTime > 0) {
+                senteTime--;
+                if (senteTime === 0) {
+                  senteTime = delayTime;
+                  delayActivatedSente = true;
+                }
+              }
+            } else {
+              senteTime--;
+              if (senteTime <= 0) {
+                clearInterval(timerInterval);
+                alert(`${getRoleName("sente")}の10秒以内の指し手がありません。${getRoleName("gote")}の勝ちです。`);
+              }
+            }
+          }
+        } else {
+          if (timerMode === "instant") {
+            goteTime--;
+            if (goteTime <= 0) {
+              clearInterval(timerInterval);
+              alert(`${getRoleName("gote")}の時間切れです！${getRoleName("sente")}の勝ちです。`);
+            }
+          } else if (timerMode === "delay") {
+            if (!delayActivatedGote) {
+              if (goteTime > 0) {
+                goteTime--;
+                if (goteTime === 0) {
+                  goteTime = delayTime;
+                  delayActivatedGote = true;
+                }
+              }
+            } else {
+              goteTime--;
+              if (goteTime <= 0) {
+                clearInterval(timerInterval);
+                alert(`${getRoleName("gote")}の10秒以内の指し手がありません。${getRoleName("sente")}の勝ちです。`);
+              }
+            }
+          }
+        }
+        updateClockDisplay();
+      }, 1000);
+    }
+
+    function pauseTimer() {
+      if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    }
+
+    function switchClock() {
+      pauseTimer();
+      if (activeTimerPlayer === "sente") { startTimerForPlayer("gote"); }
+      else { startTimerForPlayer("sente"); }
+    }
+
+    function switchTurn() {
+      if (timerMode === "delay") {
+        if (gameState.activePlayer === "sente" && delayActivatedSente) { senteTime = delayTime; }
+        else if (gameState.activePlayer === "gote" && delayActivatedGote) { goteTime = delayTime; }
+      }
+      gameState.activePlayer = (gameState.activePlayer === "sente") ? "gote" : "sente";
+      updateMessage();
+      switchClock();
+    }
+
+    function updateMessage() {
+      document.getElementById("message").textContent = "";
+    }
+    // パート3
+  </script>
+
+<script>
+  let gameState;
+  let legalMoves = new Set();
+
+  function cellId(r, c) { return r + "-" + c; }
+
+  function cloneGameState(state) { return JSON.parse(JSON.stringify(state)); }
+
+  function getLegalMovesInState(state, piece, r, c) {
+    let moves = [];
+    const owner = piece.owner;
+    const forward = (owner === "sente") ? -1 : 1;
+    if (piece.promoted && (piece.type === "pawn" || piece.type === "lance" ||
+         piece.type === "knight" || piece.type === "silver")) {
+      moves = moves.concat(getGoldMoves(state, owner, r, c));
+    } else {
+      switch (piece.type) {
+        case "pawn": {
+          const nr = r + forward;
+          if (inBounds(nr, c) && (!state.board[nr][c] || state.board[nr][c].owner !== owner))
+            moves.push({ r: nr, c: c });
+          break;
+        }
+        case "lance":
+          moves = moves.concat(getSlidingMoves(state, r, c, [[forward, 0]]));
+          break;
+        case "knight": {
+          const offsets = (owner === "sente") ? [[-2,-1],[-2,1]] : [[2,-1],[2,1]];
+          offsets.forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        }
+        case "silver": {
+          const offsets = (owner === "sente")
+            ? [[-1,-1],[-1,0],[-1,1],[1,-1],[1,1]]
+            : [[1,-1],[1,0],[1,1],[-1,-1],[-1,1]];
+          offsets.forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        }
+        case "gold":
+          moves = moves.concat(getGoldMoves(state, owner, r, c));
+          break;
+        case "king": {
+          const offsets = [
+            [-1,-1],[-1,0],[-1,1],
+            [0,-1],        [0,1],
+            [1,-1],[1,0],[1,1]
+          ];
+          offsets.forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        }
+        case "rook":
+          moves = moves.concat(getSlidingMoves(state, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
+          break;
+        case "bishop":
+          moves = moves.concat(getSlidingMoves(state, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          break;
+        case "rook_promoted":
+          moves = moves.concat(getSlidingMoves(state, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
+          [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        case "bishop_promoted":
+          moves = moves.concat(getSlidingMoves(state, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          [[-1,0],[1,0],[0,-1],[0,1]].forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+      }
+    }
+    return moves;
+  }
+
+  function getLegalMoves(piece, r, c) {
+    let moves = [];
+    const owner = piece.owner;
+    const forward = (owner === "sente") ? -1 : 1;
+    if (piece.promoted && (piece.type === "pawn" || piece.type === "lance" ||
+         piece.type === "knight" || piece.type === "silver")) {
+      moves = moves.concat(getGoldMoves(gameState, owner, r, c));
+    } else {
+      switch (piece.type) {
+        case "pawn": {
+          const nr = r + forward;
+          if (inBounds(nr, c) && (!gameState.board[nr][c] || gameState.board[nr][c].owner !== owner))
+            moves.push({ r: nr, c: c });
+          break;
+        }
+        case "lance":
+          moves = moves.concat(getSlidingMoves(gameState, r, c, [[forward, 0]]));
+          break;
+        case "knight": {
+          const offsets = (owner === "sente") ? [[-2,-1],[-2,1]] : [[2,-1],[2,1]];
+          offsets.forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!gameState.board[nr][nc] || gameState.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        }
+        case "silver": {
+          const offsets = (owner === "sente")
+            ? [[-1,-1],[-1,0],[-1,1],[1,-1],[1,1]]
+            : [[1,-1],[1,0],[1,1],[-1,-1],[-1,1]];
+          offsets.forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!gameState.board[nr][nc] || gameState.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        }
+        case "gold":
+          moves = moves.concat(getGoldMoves(gameState, owner, r, c));
+          break;
+        case "king": {
+          const offsets = [
+            [-1,-1],[-1,0],[-1,1],
+            [0,-1],        [0,1],
+            [1,-1],[1,0],[1,1]
+          ];
+          offsets.forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!gameState.board[nr][nc] || gameState.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        }
+        case "rook":
+          moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
+          break;
+        case "bishop":
+          moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          break;
+        case "rook_promoted":
+          moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,0],[1,0],[0,-1],[0,1]]));
+          [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!gameState.board[nr][nc] || gameState.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+        case "bishop_promoted":
+          moves = moves.concat(getSlidingMoves(gameState, r, c, [[-1,-1],[-1,1],[1,-1],[1,1]]));
+          [[-1,0],[1,0],[0,-1],[0,1]].forEach(off => {
+            const nr = r + off[0], nc = c + off[1];
+            if (inBounds(nr, nc) && (!gameState.board[nr][nc] || gameState.board[nr][nc].owner !== owner))
+              moves.push({ r: nr, c: nc });
+          });
+          break;
+      }
+    }
+    return moves.filter(move => isMoveSafe(piece, r, c, move.r, move.c));
+  }
+
+  function isMoveSafe(piece, fromRow, fromCol, toRow, toCol) {
+    const clone = cloneGameState(gameState);
+    clone.board[toRow][toCol] = clone.board[fromRow][fromCol];
+    clone.board[fromRow][fromCol] = null;
+    return !isKingInCheckInState(clone, piece.owner);
+  }
+
+  function inBounds(r, c) { return r >= 0 && r < 9 && c >= 0 && c < 9; }
+
+  function getGoldMoves(state, owner, r, c) {
+    let moves = [];
+    const offsets = (owner === "sente")
+      ? [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,0]]
+      : [[1,-1],[1,0],[1,1],[0,-1],[0,1],[-1,0]];
+    offsets.forEach(off => {
+      const nr = r + off[0], nc = c + off[1];
+      if (inBounds(nr, nc) && (!state.board[nr][nc] || state.board[nr][nc].owner !== owner))
+        moves.push({ r: nr, c: nc });
+    });
+    return moves;
+  }
+
+  function getSlidingMoves(state, r, c, directions) {
+    let moves = [];
+    const owner = state.board[r][c].owner;
+    directions.forEach(dir => {
+      let nr = r + dir[0], nc = c + dir[1];
+      while (inBounds(nr, nc)) {
+        if (state.board[nr][nc]) {
+          if (state.board[nr][nc].owner !== owner)
+            moves.push({ r: nr, c: nc });
+          break;
+        } else {
+          moves.push({ r: nr, c: nc });
+        }
+        nr += dir[0];
+        nc += dir[1];
+      }
+    });
+    return moves;
+  }
+
+  function getPieceSymbol(piece) {
+    if (piece.type === "pawn") { return piece.promoted ? "と" : "歩"; }
+    if (piece.promoted) {
+      if (piece.type === "silver") return "全";
+      if (piece.type === "knight") return "圭";
+      if (piece.type === "lance") return "杏";
+    }
+    const symbols = {
+      pawn: "歩",
+      lance: "香",
+      knight: "桂",
+      silver: "銀",
+      gold: "金",
+      king: "玉",
+      bishop: "角",
+      rook: "飛",
+      rook_promoted: "龍",
+      bishop_promoted: "馬"
+    };
+    return symbols[piece.type] || piece.type;
+  }
+
+  function dropPiece(selected, r, c) {
+    let piece;
+    if (selected.owner === "sente") { 
+      piece = gameState.senteHand.splice(selected.index, 1)[0]; 
+    } else { 
+      piece = gameState.goteHand.splice(selected.index, 1)[0]; 
+    }
+    gameState.board[r][c] = piece;
+  }
+
+  function isDropSafe(piece, dropRow, dropCol) {
+    const clone = cloneGameState(gameState);
+    clone.board[dropRow][dropCol] = piece;
+    return !isKingInCheckInState(clone, piece.owner);
+  }
+
+  function isLegalDrop(piece, r, c) {
+    if (gameState.board[r][c] !== null) return false;
+    if (piece.type === "pawn") {
+      for (let row = 0; row < 9; row++) {
+        const p = gameState.board[row][c];
+        if (p && p.owner === piece.owner && p.type === "pawn" && !p.promoted) {
+          alert("二歩です。");
+          return false;
+        }
+      }
+      if (piece.owner === "sente" && r === 0) { alert("そこには打てません。"); return false; }
+      if (piece.owner === "gote" && r === 8) { alert("そこには打てません。"); return false; }
+    }
+    if (!isDropSafe(piece, r, c)) { alert("ドロップ後に自玉が危険です。"); return false; }
+    return true;
+  }
+
+  async function movePiece(fromRow, fromCol, toRow, toCol) {
+    const piece = gameState.board[fromRow][fromCol];
+    const target = gameState.board[toRow][toCol];
+    if (target) { capturePiece(target); }
+    gameState.board[toRow][toCol] = piece;
+    gameState.board[fromRow][fromCol] = null;
+    const promotionZone = (piece.owner === "sente") ? [0, 1, 2] : [6, 7, 8];
+    if (!piece.promoted && isPromotable(piece.type)) {
+      if (promotionZone.includes(fromRow) || promotionZone.includes(toRow)) {
+        let mandatory = false;
+        if (piece.type === "pawn" || piece.type === "lance") {
+          if ((piece.owner === "sente" && toRow === 0) || (piece.owner === "gote" && toRow === 8))
+            mandatory = true;
+        }
+        if (piece.type === "knight") {
+          if ((piece.owner === "sente" && toRow <= 1) || (piece.owner === "gote" && toRow >= 7))
+            mandatory = true;
+        }
+        let promote = false;
+        if (mandatory) {
+          promote = true;
+        } else {
+          promote = await customConfirmPromotion(piece.owner);
+        }
+        if (promote)
+          promotePiece(piece);
+      }
+    }
+    gameState.moveCount++;
+  }
+
+  function isPromotable(type) {
+    return (type === "pawn" || type === "lance" || type === "knight" ||
+            type === "silver" || type === "rook" || type === "bishop");
+  }
+
+  function promotePiece(piece) {
+    piece.promoted = true;
+    if (piece.type === "rook") { piece.type = "rook_promoted"; }
+    else if (piece.type === "bishop") { piece.type = "bishop_promoted"; }
+  }
+
+  function capturePiece(piece) {
+    piece.promoted = false;
+    if (piece.type === "rook_promoted") piece.type = "rook";
+    if (piece.type === "bishop_promoted") piece.type = "bishop";
+    piece.owner = gameState.activePlayer;
+    if (gameState.activePlayer === "sente")
+      gameState.senteHand.push(piece);
+    else
+      gameState.goteHand.push(piece);
+  }
+
+  function isKingInCheckInState(state, owner) {
+    const kingPos = findKing(state, owner);
+    if (!kingPos) return true;
+    const attacker = (owner === "sente") ? "gote" : "sente";
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = state.board[r][c];
+        if (p && p.owner === attacker) {
+          const moves = getLegalMovesInState(state, p, r, c);
+          for (const move of moves)
+            if (move.r === kingPos.r && move.c === kingPos.c)
+              return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function findKing(state, owner) {
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        const p = state.board[r][c];
+        if (p && p.owner === owner && p.type === "king")
+          return { r: r, c: c };
+      }
+    }
+    return null;
+  }
+
+  async function handleCellClick() {
+    const r = parseInt(this.dataset.row);
+    const c = parseInt(this.dataset.col);
+    if (gameState.selected && !gameState.selected.hand &&
+        gameState.selected.row === r && gameState.selected.col === c) {
+      gameState.selected = null;
+      clearHighlights();
+      renderBoard();
+      return;
+    }
+    if (gameState.selected && gameState.selected.hand) {
+      if (gameState.board[r][c] === null && isLegalDrop(gameState.selected.piece, r, c)) {
+        dropPiece(gameState.selected, r, c);
+        gameState.moveCount++;
+        gameState.selected = null;
+        clearHighlights();
+        renderBoard();
+        switchTurn();
+        return;
+      } else {
+        gameState.selected = null;
+        clearHighlights();
+        renderBoard();
+        return;
+      }
+    }
+    if (gameState.selected && !gameState.selected.hand) {
+      if (legalMoves.has(cellId(r, c))) {
+        await movePiece(gameState.selected.row, gameState.selected.col, r, c);
+        gameState.selected = null;
+        clearHighlights();
+        renderBoard();
+        switchTurn();
+        return;
+      } else {
+        const piece = gameState.board[r][c];
+        if (piece && piece.owner === gameState.activePlayer) {
+          gameState.selected = { row: r, col: c };
+          clearHighlights();
+          showLegalMoves(r, c);
+        } else {
+          gameState.selected = null;
+          clearHighlights();
+          renderBoard();
+        }
+        return;
+      }
+    }
+    const piece = gameState.board[r][c];
+    if (piece && piece.owner === gameState.activePlayer) {
+      gameState.selected = { row: r, col: c };
+      showLegalMoves(r, c);
+    }
+  }
+
+  function clearHighlights() { legalMoves.clear(); }
+
+  function showLegalMoves(r, c) {
+    clearHighlights();
+    const piece = gameState.board[r][c];
+    let moves = getLegalMoves(piece, r, c);
+    moves.forEach(move => { legalMoves.add(cellId(move.r, move.c)); });
+    renderBoard();
+  }
+
+  function renderBoard() {
+    const boardBody = document.getElementById("board-body");
+    boardBody.innerHTML = "";
+    for (let r = 0; r < 9; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < 9; c++) {
+        const td = document.createElement("td");
+        td.dataset.row = r;
+        td.dataset.col = c;
+        if (gameState.selected && !gameState.selected.hand &&
+            gameState.selected.row === r && gameState.selected.col === c)
+          td.classList.add("selected");
+        if (legalMoves.has(cellId(r, c)))
+          td.classList.add("highlight");
+        td.addEventListener("click", handleCellClick);
+        const piece = gameState.board[r][c];
+        if (piece) {
+          const span = document.createElement("span");
+          span.classList.add("piece");
+          if (piece.owner === "gote") span.classList.add("gote");
+          span.textContent = getPieceSymbol(piece);
+          td.appendChild(span);
+        }
+        tr.appendChild(td);
+      }
+      boardBody.appendChild(tr);
+    }
+    renderHands();
+    updateHandPiecesSize();
+  }
+
+  function renderHands() {
+    const senteHandArea = document.getElementById("sente-hand-area");
+    const goteHandArea = document.getElementById("gote-hand-area");
+    senteHandArea.innerHTML = "";
+    goteHandArea.innerHTML = "";
+    
+    senteHandArea.style.height = "100%";
+    senteHandArea.style.width = "100%";
+    goteHandArea.style.height = "100%";
+    goteHandArea.style.width = "100%";
+    
+    senteHandArea.style.display = "flex";
+    senteHandArea.style.flexDirection = "column";
+    senteHandArea.style.flexWrap = "wrap";
+    senteHandArea.style.alignContent = "flex-start";
+
+    goteHandArea.style.display = "flex";
+    goteHandArea.style.flexDirection = "column";
+    goteHandArea.style.flexWrap = "wrap";
+    goteHandArea.style.alignContent = "flex-start";
+    
+    const orderMapping = {
+      "pawn": 0,
+      "lance": 1,
+      "knight": 2,
+      "silver": 3,
+      "gold": 4,
+      "bishop": 5,
+      "rook": 6
+    };
+    
+    gameState.senteHand.sort((a, b) => (orderMapping[a.type] ?? 100) - (orderMapping[b.type] ?? 100));
+    gameState.goteHand.sort((a, b) => (orderMapping[a.type] ?? 100) - (orderMapping[b.type] ?? 100));
+    
+    gameState.senteHand.forEach((piece, index) => {
+      const span = document.createElement("span");
+      span.classList.add("hand-piece");
+      if (gameState.selected && gameState.selected.hand &&
+          gameState.selected.owner === "sente" &&
+          gameState.selected.index === index)
+        span.classList.add("selected");
+      span.textContent = getPieceSymbol(piece);
+      span.dataset.handIndex = index;
+      span.addEventListener("click", () => {
+        if (gameState.activePlayer === "sente") {
+          if (gameState.selected && gameState.selected.hand &&
+              gameState.selected.owner === "sente" &&
+              gameState.selected.index === index)
+            gameState.selected = null;
+          else
+            gameState.selected = { hand: true, piece, index, owner: "sente" };
+          renderBoard();
+        }
+      });
+      senteHandArea.appendChild(span);
+    });
+
+    gameState.goteHand.forEach((piece, index) => {
+      const span = document.createElement("span");
+      span.classList.add("hand-piece");
+      if (gameState.selected && gameState.selected.hand &&
+          gameState.selected.owner === "gote" &&
+          gameState.selected.index === index)
+        span.classList.add("selected");
+      span.textContent = getPieceSymbol(piece);
+      span.dataset.handIndex = index;
+      span.addEventListener("click", () => {
+        if (gameState.activePlayer === "gote") {
+          if (gameState.selected && gameState.selected.hand &&
+              gameState.selected.owner === "gote" &&
+              gameState.selected.index === index)
+            gameState.selected = null;
+          else
+            gameState.selected = { hand: true, piece, index, owner: "gote" };
+          renderBoard();
+        }
+      });
+      goteHandArea.appendChild(span);
+    });
+  }
+
+  function updateHandPiecesSize() {
+    const boardContainer = document.getElementById("board-container");
+    const basePieceSize = (boardContainer.clientWidth / 9) * 0.8;
+    document.querySelectorAll('.hand-piece').forEach(piece => {
+      piece.style.width = basePieceSize + "px";
+      piece.style.height = basePieceSize + "px";
+    });
+  }
+
+  function initGame() {
+    gameState = {
+      board: [],
+      activePlayer: swapped ? "gote" : "sente",
+      senteHand: [],
+      goteHand: [],
+      selected: null,
+      moveCount: 0
+    };
+    for (let r = 0; r < 9; r++) { gameState.board.push(new Array(9).fill(null)); }
+    // 後手初期配置（上段）パート4
+    gameState.board[0][0] = { type: 'lance', owner: "gote", promoted: false };
+    gameState.board[0][1] = { type: 'knight', owner: "gote", promoted: false };
+    gameState.board[0][2] = { type: 'silver', owner: "gote", promoted: false };
+    gameState.board[0][3] = { type: 'gold', owner: "gote", promoted: false };
+    gameState.board[0][4] = { type: 'king', owner: "gote", promoted: false };
+    gameState.board[0][5] = { type: 'gold', owner: "gote", promoted: false };
+    gameState.board[0][6] = { type: 'silver', owner: "gote", promoted: false };
+    gameState.board[0][7] = { type: 'knight', owner: "gote", promoted: false };
+    gameState.board[0][8] = { type: 'lance', owner: "gote", promoted: false };
+    gameState.board[1][1] = { type: 'rook', owner: "gote", promoted: false };
+    gameState.board[1][7] = { type: 'bishop', owner: "gote", promoted: false };
+    for (let c = 0; c < 9; c++) { gameState.board[2][c] = { type: 'pawn', owner: "gote", promoted: false }; }
+    // 先手初期配置（下段）
+    for (let c = 0; c < 9; c++) { gameState.board[6][c] = { type: 'pawn', owner: "sente", promoted: false }; }
+    gameState.board[7][1] = { type: 'bishop', owner: "sente", promoted: false };
+    gameState.board[7][7] = { type: 'rook', owner: "sente", promoted: false };
+    gameState.board[8][0] = { type: 'lance', owner: "sente", promoted: false };
+    gameState.board[8][1] = { type: 'knight', owner: "sente", promoted: false };
+    gameState.board[8][2] = { type: 'silver', owner: "sente", promoted: false };
+    gameState.board[8][3] = { type: 'gold', owner: "sente", promoted: false };
+    gameState.board[8][4] = { type: 'king', owner: "sente", promoted: false };
+    gameState.board[8][5] = { type: 'gold', owner: "sente", promoted: false };
+    gameState.board[8][6] = { type: 'silver', owner: "sente", promoted: false };
+    gameState.board[8][7] = { type: 'knight', owner: "sente", promoted: false };
+    gameState.board[8][8] = { type: 'lance', owner: "sente", promoted: false };
+
+    updateMessage();
+    renderBoard();
+    initializeTimer();
+    startTimerForPlayer(gameState.activePlayer);
+    updateRoleDisplays();
+  }
+
+  document.addEventListener("DOMContentLoaded", initGame);
+</script>
+<script>
+  // プレイヤーの向きに合わせたカスタムプロモーション確認モーダル
+  function customConfirmPromotion(owner) {
+    return new Promise((resolve) => {
+      // モーダル用オーバーレイを作成（全画面モード中も必ず表示）
+      const modalOverlay = document.createElement("div");
+      modalOverlay.style.position = "fixed";
+      modalOverlay.style.top = "0";
+      modalOverlay.style.left = "0";
+      modalOverlay.style.width = "100%";
+      modalOverlay.style.height = "100%";
+      modalOverlay.style.backgroundColor = "rgba(0, 0, 0, 0.5)";
+      modalOverlay.style.display = "flex";
+      modalOverlay.style.alignItems = "center";
+      modalOverlay.style.justifyContent = "center";
+      modalOverlay.style.zIndex = "99999";
+      
+      // モーダルコンテナの作成
+      const modalContainer = document.createElement("div");
+      modalContainer.style.background = "#fff";
+      modalContainer.style.padding = "20px";
+      modalContainer.style.borderRadius = "10px";
+      modalContainer.style.boxShadow = "0 0 10px rgba(0,0,0,0.5)";
+      modalContainer.style.textAlign = "center";
+      
+      // プレイヤーに合わせて回転（先手なら 90°、後手なら -90°）
+      let rotationAngle = 0;
+      if (owner === "sente") {
+         rotationAngle = 90;
+      } else if (owner === "gote") {
+         rotationAngle = -90;
+      }
+      modalContainer.style.transform = "rotate(" + rotationAngle + "deg)";
+      
+      // メッセージ作成
+      const message = document.createElement("div");
+      message.textContent = "この駒を成りますか？";
+      message.style.fontSize = "18px";
+      message.style.marginBottom = "20px";
+      modalContainer.appendChild(message);
+      
+      // ボタンコンテナの作成
+      const buttonsContainer = document.createElement("div");
+      
+      // 「成る」ボタン（サイズ拡大）
+      const promoteButton = document.createElement("button");
+      promoteButton.textContent = "成る";
+      promoteButton.style.marginRight = "10px";
+      promoteButton.style.fontSize = "18px";
+      promoteButton.style.padding = "10px 20px";
+      promoteButton.addEventListener("click", () => {
+         modalOverlay.parentNode.removeChild(modalOverlay);
+         resolve(true);
+      });
+      buttonsContainer.appendChild(promoteButton);
+      
+      // 「成らない」ボタン（サイズ拡大）
+      const noPromoteButton = document.createElement("button");
+      noPromoteButton.textContent = "成らない";
+      noPromoteButton.style.fontSize = "18px";
+      noPromoteButton.style.padding = "10px 20px";
+      noPromoteButton.addEventListener("click", () => {
+         modalOverlay.parentNode.removeChild(modalOverlay);
+         resolve(false);
+      });
+      buttonsContainer.appendChild(noPromoteButton);
+      
+      modalContainer.appendChild(buttonsContainer);
+      modalOverlay.appendChild(modalContainer);
+      
+      // 全画面モード時は全画面要素に、そうでなければ通常の body に追加
+      const fsElement = document.fullscreenElement ||
+                        document.webkitFullscreenElement ||
+                        document.mozFullScreenElement ||
+                        document.msFullscreenElement;
+      if(fsElement) {
+         fsElement.appendChild(modalOverlay);
+      } else {
+         document.body.appendChild(modalOverlay);
+      }
+    });
+  }
+
+  // 先後入れ替えの処理
+  document.getElementById("swap-button").addEventListener("click", swapSides);
+  
+  function swapSides() {
+    if (gameState.moveCount > 0) {
+      alert("初形状態でなければ先後入れ替えはできません。");
+      return;
+    }
+    swapped = !swapped;
+    gameState.activePlayer = swapped ? "gote" : "sente";
+    updateMessage();
+    const senteRole = document.querySelector("#sente-clock .role-display");
+    const goteRole = document.querySelector("#gote-clock .role-display");
+    if (senteRole && goteRole) {
+      senteRole.setAttribute("data-original", swapped ? "後手" : "先手");
+      goteRole.setAttribute("data-original", swapped ? "先手" : "後手");
+      senteRole.textContent = senteRole.getAttribute("data-original");
+      goteRole.textContent = goteRole.getAttribute("data-original");
+      updateRoleDisplays();
+    }
+    pauseTimer();
+    startTimerForPlayer(gameState.activePlayer);
+  }
+  
+  // role-display の向きを更新する処理
+  function updateRoleDisplays() {
+    const senteRole = document.querySelector("#sente-clock .role-display");
+    if (senteRole) {
+      const text = senteRole.getAttribute("data-original") || senteRole.textContent.trim();
+      senteRole.innerHTML = "";
+      const chars = [...text].reverse();
+      for (const char of chars) {
+        const span = document.createElement("span");
+        span.style.display = "inline-block";
+        span.style.transform = "rotate(90deg)";
+        span.textContent = char;
+        senteRole.appendChild(span);
+      }
+    }
+    const goteRole = document.querySelector("#gote-clock .role-display");
+    if (goteRole) {
+      const text = goteRole.getAttribute("data-original") || goteRole.textContent.trim();
+      goteRole.innerHTML = "";
+      for (const char of text) {
+        const span = document.createElement("span");
+        span.style.display = "inline-block";
+        span.style.transform = "rotate(-90deg)";
+        span.textContent = char;
+        goteRole.appendChild(span);
+      }
+    }
+  }
+  
+  document.addEventListener("DOMContentLoaded", function() {
+    updateRoleDisplays();
+  });
+  
+  // リセットボタンの処理
+  document.getElementById("reset-button").addEventListener("click", function(){
+    if (confirm("本当にリセットしますか？")) {
+      pauseTimer();
+      initGame();
+    }
+  });
+  
+  // 全画面モードボタンの処理（対象は #game-area のみ）
+  document.getElementById("fullscreen-button").addEventListener("click", function() {
+    const gameArea = document.getElementById("game-area");
+    if (!document.fullscreenElement &&
+        !document.webkitFullscreenElement &&
+        !document.mozFullScreenElement &&
+        !document.msFullscreenElement) {
+      if (gameArea.requestFullscreen) { gameArea.requestFullscreen(); }
+      else if (gameArea.msRequestFullscreen) { gameArea.msRequestFullscreen(); }
+      else if (gameArea.mozRequestFullScreen) { gameArea.mozRequestFullScreen(); }
+      else if (gameArea.webkitRequestFullscreen) { gameArea.webkitRequestFullscreen(Element.ALLOW_KEYBOARD_INPUT); }
+    } else {
+      if (document.exitFullscreen) { document.exitFullscreen(); }
+      else if (document.msExitFullscreen) { document.msExitFullscreen(); }
+      else if (document.mozCancelFullScreen) { document.mozCancelFullScreen(); }
+      else if (document.webkitExitFullscreen) { document.webkitExitFullscreen(); }
+    }
+  });
+  
+  // 全画面モード時と通常時のレイアウト調整
+  function updateFullScreenLayout() {
+    const boardContainer = document.getElementById("board-container");
+    const senteHand = document.getElementById("sente-hand-container");
+    const goteHand = document.getElementById("gote-hand-container");
+  
+    // 全画面モードの場合、利用可能領域に合わせてサイズを調整
+    if (document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement) {
+      const availableWidth = window.innerWidth - 200; // 両側の持駒領域 200px を除く
+      const availableHeight = window.innerHeight;
+      const boardSize = Math.min(availableWidth, availableHeight);
+  
+      boardContainer.style.width = boardSize + "px";
+      boardContainer.style.height = boardSize + "px";
+      senteHand.style.height = boardSize + "px";
+      goteHand.style.height = boardSize + "px";
+    } else {
+      // 通常時は元のサイズに戻す
+      boardContainer.style.width = "450px";
+      boardContainer.style.height = "450px";
+      senteHand.style.height = "450px";
+      goteHand.style.height = "450px";
+    }
+    // 持ち駒のサイズも更新
+    updateHandPiecesSize();
+  }
+  
+  document.addEventListener("fullscreenchange", updateFullScreenLayout);
+  document.addEventListener("webkitfullscreenchange", updateFullScreenLayout);
+  document.addEventListener("mozfullscreenchange", updateFullScreenLayout);
+  document.addEventListener("msfullscreenchange", updateFullScreenLayout);
+  
+  window.addEventListener("resize", function() {
+    updateFullScreenLayout();
+  });
+  // 持ち駒のサイズと文字サイズ更新。常に基礎サイズの半分に設定
+  function updateHandPiecesSize() {
+    const boardContainer = document.getElementById("board-container");
+    const basePieceSize = (boardContainer.clientWidth / 9) * 0.8;
+    document.querySelectorAll('.hand-piece').forEach(piece => {
+      piece.style.width = basePieceSize + "px";
+      piece.style.height = basePieceSize + "px";
+      piece.style.fontSize = (basePieceSize / 2) + "px";
+    });
+  }
+  
+  // 盤上の駒の文字サイズ・表示位置更新。常にマスの中央に配置するため translate(15%, 0%) を適用
+  function updateBoardPiecesFontSize() {
+    const boardContainer = document.getElementById("board-container");
+    const basePieceSize = (boardContainer.clientWidth / 9) * 0.8;
+    document.querySelectorAll('#board-container .piece').forEach(piece => {
+         piece.style.fontSize = (basePieceSize / 2) + "px";
+         // translate(15%, 0%) にして、盤上駒を中央に配置
+         if (piece.classList.contains("gote"))
+            piece.style.transform = "translate(15%, 0%) rotate(180deg)";
+         else
+            piece.style.transform = "translate(15%, 0%) rotate(0deg)";
+    });
+  }
+  
+  // renderBoard 内で新たに生成された盤上の駒にも、スタイル調整を適用する
+  function renderBoard() {
+    const boardBody = document.getElementById("board-body");
+    boardBody.innerHTML = "";
+    for (let r = 0; r < 9; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < 9; c++) {
+        const td = document.createElement("td");
+        td.dataset.row = r;
+        td.dataset.col = c;
+        if (gameState.selected && !gameState.selected.hand &&
+            gameState.selected.row === r && gameState.selected.col === c)
+          td.classList.add("selected");
+        if (legalMoves.has(cellId(r, c)))
+          td.classList.add("highlight");
+        td.addEventListener("click", handleCellClick);
+        const piece = gameState.board[r][c];
+        if (piece) {
+          const span = document.createElement("span");
+          span.classList.add("piece");
+          if (piece.owner === "gote") span.classList.add("gote");
+          span.textContent = getPieceSymbol(piece);
+          td.appendChild(span);
+        }
+        tr.appendChild(td);
+      }
+      boardBody.appendChild(tr);
+    }
+    renderHands();
+    updateHandPiecesSize();
+    updateBoardPiecesFontSize();
+  }
+</script>
+<script>
+  // カスタムピンチジェスチャーによるズーム処理（サイト全体対象）パート5
+  let initialDistance = null;
+  let initialScale = 1;
+  let currentScale = 1;
+  const minScale = 0.4;
+  const maxScale = 2;  
+
+  // 2本指間の距離を計算する関数
+  function getDistance(touches) {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  // タッチ開始時
+  function onTouchStart(e) {
+    if (e.touches.length === 2) {
+      initialDistance = getDistance(e.touches);
+      initialScale = currentScale;
+    }
+  }
+
+  // タッチ移動時（ピンチイン・ピンチアウトの両方に対応）
+  function onTouchMove(e) {
+    if (e.touches.length === 2 && initialDistance !== null) {
+      let newDistance = getDistance(e.touches);
+      let scaleFactor = newDistance / initialDistance;
+      // ここでの scaleFactor が 1 より小さければピンチインとなり、1 より大きければピンチアウトとなる
+      currentScale = initialScale * scaleFactor;
+      // 値を minScale と maxScale の間に調整
+      currentScale = Math.min(maxScale, Math.max(minScale, currentScale));
+
+      // サイト全体（document.body）に対してtransformでズームを適用
+      document.body.style.transform = "scale(" + currentScale + ")";
+      document.body.style.transformOrigin = "center center";
+
+      // ブラウザ標準のズームと競合させないために preventDefault() を呼び出す
+      e.preventDefault();
+    }
+  }
+
+  // タッチ終了時：初期値をリセット
+  function onTouchEnd(e) {
+    if (e.touches.length < 2) {
+      initialDistance = null;
+    }
+  }
+
+  // DOM読み込み後にイベントリスナーを登録
+  document.addEventListener("DOMContentLoaded", function() {
+    document.body.addEventListener("touchstart", onTouchStart, { passive: false });
+    document.body.addEventListener("touchmove", onTouchMove, { passive: false });
+    document.body.addEventListener("touchend", onTouchEnd, { passive: false });
+  });
+</script>
+</body>
+</html>
