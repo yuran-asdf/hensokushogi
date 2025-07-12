@@ -1801,14 +1801,28 @@
         const td = document.createElement("td");
         td.dataset.row = r;
         td.dataset.col = c;
-        if (gameState.selected && !gameState.selected.hand &&
-            gameState.selected.row === r && gameState.selected.col === c)
-          td.classList.add("selected");
-        if (legalMoves.has(cellId(r, c)))
-          td.classList.add("highlight");
+        
+        // 配置フェーズ中の配置可能エリアハイライト
+        if (gameState.setupPhase) {
+          const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
+          if (validRows.includes(r)) {
+            td.style.backgroundColor = "#E8F5E8";
+            td.style.borderColor = "#4CAF50";
+          }
+        } else {
+          // 通常ゲーム中のハイライト
+          if (gameState.selected && !gameState.selected.hand &&
+              gameState.selected.row === r && gameState.selected.col === c)
+            td.classList.add("selected");
+          if (legalMoves.has(cellId(r, c)))
+            td.classList.add("highlight");
+        }
+        
         td.addEventListener("click", handleCellClick);
         const piece = gameState.board[r][c];
-        if (piece) {
+        
+        // 配置フェーズ中は相手の駒を表示しない
+        if (piece && (!gameState.setupPhase || piece.owner === gameState.setupPhase)) {
           const span = document.createElement("span");
           span.classList.add("piece");
           if (piece.owner === "gote") span.classList.add("gote");
