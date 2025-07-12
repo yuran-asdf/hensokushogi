@@ -1173,13 +1173,25 @@
         td.addEventListener("click", handleCellClick);
         const piece = gameState.board[r][c];
         
-        // 配置フェーズ中は相手の駒を表示しない
-        if (piece && (!gameState.setupPhase || piece.owner === gameState.setupPhase)) {
-          const span = document.createElement("span");
-          span.classList.add("piece");
-          if (piece.owner === "gote") span.classList.add("gote");
-          span.textContent = getPieceSymbol(piece);
-          td.appendChild(span);
+        // 駒の表示制御
+        if (piece) {
+          let shouldShowPiece = false;
+          
+          if (gameState.setupPhase) {
+            // 配置フェーズ中は現在配置中のプレイヤーの駒のみ表示
+            shouldShowPiece = (piece.owner === gameState.setupPhase);
+          } else {
+            // ゲーム中は全ての駒を表示
+            shouldShowPiece = true;
+          }
+          
+          if (shouldShowPiece) {
+            const span = document.createElement("span");
+            span.classList.add("piece");
+            if (piece.owner === "gote") span.classList.add("gote");
+            span.textContent = getPieceSymbol(piece);
+            td.appendChild(span);
+          }
         }
         tr.appendChild(td);
       }
