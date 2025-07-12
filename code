@@ -87,6 +87,7 @@
     }
     table.board td.selected { background-color: #E0F7FA; }
     table.board td.highlight { background-color: #BBDEFB; }
+    table.board td.setup-highlight { background-color: #C8E6C9; border: 2px solid #4CAF50; }
     /* タイマー・時計ボックス */
     .clock {
       position: relative;
@@ -395,7 +396,15 @@
     }
 
     function updateMessage() {
-      document.getElementById("message").textContent = "";
+      const messageElement = document.getElementById("message");
+      if (gameState.phase === "setup") {
+        const senteRemaining = gameState.senteHand.length;
+        const goteRemaining = gameState.goteHand.length;
+        messageElement.textContent = `駒配置フェーズ - 先手: ${senteRemaining}駒残り, 後手: ${goteRemaining}駒残り`;
+      } else {
+        const currentPlayer = getRoleName(gameState.activePlayer);
+        messageElement.textContent = `${currentPlayer}の手番`;
+      }
     }
     // パート3
   </script>
@@ -752,6 +761,31 @@
   async function handleCellClick() {
     const r = parseInt(this.dataset.row);
     const c = parseInt(this.dataset.col);
+    
+    // セットアップフェーズの処理
+    if (gameState.phase === "setup") {
+      if (gameState.selected && gameState.selected.hand) {
+        // 選択された駒を配置
+        if (gameState.board[r][c] === null && isValidSetupPlacement(gameState.selected.owner, r, c)) {
+          const piece = gameState.selected.owner === "sente" 
+            ? gameState.senteHand.splice(gameState.selected.index, 1)[0]
+            : gameState.goteHand.splice(gameState.selected.index, 1)[0];
+          gameState.board[r][c] = piece;
+          gameState.selected = null;
+          clearHighlights();
+          renderBoard();
+          checkSetupComplete();
+          return;
+        }
+      }
+      // セットアップフェーズ中は盤上の駒をクリックしても何も起こらない
+      gameState.selected = null;
+      clearHighlights();
+      renderBoard();
+      return;
+    }
+    
+    // 通常のゲームフェーズの処理
     if (gameState.selected && !gameState.selected.hand &&
         gameState.selected.row === r && gameState.selected.col === c) {
       gameState.selected = null;
@@ -889,13 +923,18 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
-        if (gameState.activePlayer === "sente") {
+        if (gameState.phase === "setup" || gameState.activePlayer === "sente") {
           if (gameState.selected && gameState.selected.hand &&
               gameState.selected.owner === "sente" &&
-              gameState.selected.index === index)
+              gameState.selected.index === index) {
             gameState.selected = null;
-          else
+            clearHighlights();
+          } else {
             gameState.selected = { hand: true, piece, index, owner: "sente" };
+            if (gameState.phase === "setup") {
+              showValidPlacementAreas("sente");
+            }
+          }
           renderBoard();
         }
       });
@@ -912,13 +951,18 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
-        if (gameState.activePlayer === "gote") {
+        if (gameState.phase === "setup" || gameState.activePlayer === "gote") {
           if (gameState.selected && gameState.selected.hand &&
               gameState.selected.owner === "gote" &&
-              gameState.selected.index === index)
+              gameState.selected.index === index) {
             gameState.selected = null;
-          else
+            clearHighlights();
+          } else {
             gameState.selected = { hand: true, piece, index, owner: "gote" };
+            if (gameState.phase === "setup") {
+              showValidPlacementAreas("gote");
+            }
+          }
           renderBoard();
         }
       });
@@ -942,41 +986,104 @@
       senteHand: [],
       goteHand: [],
       selected: null,
-      moveCount: 0
+      moveCount: 0,
+      phase: "setup", // 新しい "setup" フェーズを追加
+      setupComplete: { sente: false, gote: false }
     };
     for (let r = 0; r < 9; r++) { gameState.board.push(new Array(9).fill(null)); }
-    // 後手初期配置（上段）パート4
-    gameState.board[0][0] = { type: 'lance', owner: "gote", promoted: false };
-    gameState.board[0][1] = { type: 'knight', owner: "gote", promoted: false };
-    gameState.board[0][2] = { type: 'silver', owner: "gote", promoted: false };
-    gameState.board[0][3] = { type: 'gold', owner: "gote", promoted: false };
-    gameState.board[0][4] = { type: 'king', owner: "gote", promoted: false };
-    gameState.board[0][5] = { type: 'gold', owner: "gote", promoted: false };
-    gameState.board[0][6] = { type: 'silver', owner: "gote", promoted: false };
-    gameState.board[0][7] = { type: 'knight', owner: "gote", promoted: false };
-    gameState.board[0][8] = { type: 'lance', owner: "gote", promoted: false };
-    gameState.board[1][1] = { type: 'rook', owner: "gote", promoted: false };
-    gameState.board[1][7] = { type: 'bishop', owner: "gote", promoted: false };
-    for (let c = 0; c < 9; c++) { gameState.board[2][c] = { type: 'pawn', owner: "gote", promoted: false }; }
-    // 先手初期配置（下段）
-    for (let c = 0; c < 9; c++) { gameState.board[6][c] = { type: 'pawn', owner: "sente", promoted: false }; }
-    gameState.board[7][1] = { type: 'bishop', owner: "sente", promoted: false };
-    gameState.board[7][7] = { type: 'rook', owner: "sente", promoted: false };
-    gameState.board[8][0] = { type: 'lance', owner: "sente", promoted: false };
-    gameState.board[8][1] = { type: 'knight', owner: "sente", promoted: false };
-    gameState.board[8][2] = { type: 'silver', owner: "sente", promoted: false };
-    gameState.board[8][3] = { type: 'gold', owner: "sente", promoted: false };
-    gameState.board[8][4] = { type: 'king', owner: "sente", promoted: false };
-    gameState.board[8][5] = { type: 'gold', owner: "sente", promoted: false };
-    gameState.board[8][6] = { type: 'silver', owner: "sente", promoted: false };
-    gameState.board[8][7] = { type: 'knight', owner: "sente", promoted: false };
-    gameState.board[8][8] = { type: 'lance', owner: "sente", promoted: false };
-
-    updateMessage();
+    
+    // かくし将棋の初期駒配置：手駒に全駒を配置
+    initializePiecesInHand();
+    
     renderBoard();
+    updateMessage();
     initializeTimer();
-    startTimerForPlayer(gameState.activePlayer);
+    // セットアップフェーズ中はタイマーを開始しない
     updateRoleDisplays();
+  }
+
+  function initializePiecesInHand() {
+    // 先手の駒を手駒に配置
+    gameState.senteHand = [
+      { type: 'king', owner: "sente", promoted: false },
+      { type: 'gold', owner: "sente", promoted: false },
+      { type: 'gold', owner: "sente", promoted: false },
+      { type: 'silver', owner: "sente", promoted: false },
+      { type: 'silver', owner: "sente", promoted: false },
+      { type: 'knight', owner: "sente", promoted: false },
+      { type: 'knight', owner: "sente", promoted: false },
+      { type: 'lance', owner: "sente", promoted: false },
+      { type: 'lance', owner: "sente", promoted: false },
+      { type: 'rook', owner: "sente", promoted: false },
+      { type: 'bishop', owner: "sente", promoted: false }
+    ];
+    // 歩は9枚
+    for (let i = 0; i < 9; i++) {
+      gameState.senteHand.push({ type: 'pawn', owner: "sente", promoted: false });
+    }
+    
+    // 後手の駒を手駒に配置
+    gameState.goteHand = [
+      { type: 'king', owner: "gote", promoted: false },
+      { type: 'gold', owner: "gote", promoted: false },
+      { type: 'gold', owner: "gote", promoted: false },
+      { type: 'silver', owner: "gote", promoted: false },
+      { type: 'silver', owner: "gote", promoted: false },
+      { type: 'knight', owner: "gote", promoted: false },
+      { type: 'knight', owner: "gote", promoted: false },
+      { type: 'lance', owner: "gote", promoted: false },
+      { type: 'lance', owner: "gote", promoted: false },
+      { type: 'rook', owner: "gote", promoted: false },
+      { type: 'bishop', owner: "gote", promoted: false }
+    ];
+    // 歩は9枚
+    for (let i = 0; i < 9; i++) {
+      gameState.goteHand.push({ type: 'pawn', owner: "gote", promoted: false });
+    }
+  }
+
+  function isValidSetupPlacement(player, row, col) {
+    // 先手は6-8行目に配置可能
+    if (player === "sente") {
+      return row >= 6 && row <= 8;
+    }
+    // 後手は0-2行目に配置可能
+    if (player === "gote") {
+      return row >= 0 && row <= 2;
+    }
+    return false;
+  }
+
+  function showValidPlacementAreas(player) {
+    clearHighlights();
+    for (let r = 0; r < 9; r++) {
+      for (let c = 0; c < 9; c++) {
+        if (isValidSetupPlacement(player, r, c) && gameState.board[r][c] === null) {
+          legalMoves.add(cellId(r, c));
+        }
+      }
+    }
+    renderBoard();
+  }
+
+  function checkSetupComplete() {
+    // すべての駒が配置されたかチェック
+    const senteComplete = gameState.senteHand.length === 0;
+    const goteComplete = gameState.goteHand.length === 0;
+    
+    gameState.setupComplete.sente = senteComplete;
+    gameState.setupComplete.gote = goteComplete;
+    
+    updateMessage(); // メッセージを更新
+    
+    if (senteComplete && goteComplete) {
+      gameState.phase = "game";
+      gameState.activePlayer = swapped ? "gote" : "sente";
+      updateMessage();
+      startTimerForPlayer(gameState.activePlayer);
+      clearHighlights();
+      renderBoard();
+    }
   }
 
   document.addEventListener("DOMContentLoaded", initGame);
@@ -1224,8 +1331,13 @@
         if (gameState.selected && !gameState.selected.hand &&
             gameState.selected.row === r && gameState.selected.col === c)
           td.classList.add("selected");
-        if (legalMoves.has(cellId(r, c)))
-          td.classList.add("highlight");
+        if (legalMoves.has(cellId(r, c))) {
+          if (gameState.phase === "setup") {
+            td.classList.add("setup-highlight");
+          } else {
+            td.classList.add("highlight");
+          }
+        }
         td.addEventListener("click", handleCellClick);
         const piece = gameState.board[r][c];
         if (piece) {
