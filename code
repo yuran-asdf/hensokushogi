@@ -592,41 +592,21 @@
     const directions = [[-1,-1],[-1,1],[1,-1],[1,1]];
     let moves = [];
     
-    // 通常の角行移動
-    moves = moves.concat(getSlidingMoves(state, r, c, directions));
-    
-    // 反射角が有効な場合は反射移動も追加
     if (state.variants.reflectionAngle) {
+      // 反射角が有効な場合は反射移動のみ
       directions.forEach(dir => {
-        let nr = r + dir[0], nc = c + dir[1];
-        while (inBounds(nr, nc)) {
-          if (state.board[nr][nc]) {
-            if (state.board[nr][nc].owner !== owner) {
-              moves.push({ r: nr, c: nc });
-            }
-            break;
-          } else {
-            moves.push({ r: nr, c: nc });
-          }
-          nr += dir[0];
-          nc += dir[1];
-        }
+        let currentR = r;
+        let currentC = c;
+        let currentDir = [...dir];
         
-        // 盤の端に到達した場合、反射
-        if (!inBounds(nr, nc)) {
-          let reflectedDir = [...dir];
+        // 最大2回の反射まで許可
+        for (let reflections = 0; reflections <= 2; reflections++) {
+          let nr = currentR + currentDir[0];
+          let nc = currentC + currentDir[1];
+          let lastValidR = currentR;
+          let lastValidC = currentC;
           
-          // 反射方向を計算
-          if (nr < 0 || nr >= 9) reflectedDir[0] = -reflectedDir[0];
-          if (nc < 0 || nc >= 9) reflectedDir[1] = -reflectedDir[1];
-          
-          // 反射後の位置を計算
-          nr = Math.max(0, Math.min(8, nr));
-          nc = Math.max(0, Math.min(8, nc));
-          nr += reflectedDir[0];
-          nc += reflectedDir[1];
-          
-          // 反射後の移動
+          // 現在の方向に移動
           while (inBounds(nr, nc)) {
             if (state.board[nr][nc]) {
               if (state.board[nr][nc].owner !== owner) {
@@ -635,12 +615,44 @@
               break;
             } else {
               moves.push({ r: nr, c: nc });
+              lastValidR = nr;
+              lastValidC = nc;
             }
-            nr += reflectedDir[0];
-            nc += reflectedDir[1];
+            nr += currentDir[0];
+            nc += currentDir[1];
+          }
+          
+          // 盤の端に到達した場合、反射を試みる
+          if (!inBounds(nr, nc)) {
+            let newDir = [...currentDir];
+            let reflectionOccurred = false;
+            
+            // 反射方向を計算
+            if (nr < 0 || nr >= 9) {
+              newDir[0] = -newDir[0];
+              reflectionOccurred = true;
+            }
+            if (nc < 0 || nc >= 9) {
+              newDir[1] = -newDir[1];
+              reflectionOccurred = true;
+            }
+            
+            if (reflectionOccurred) {
+              // 反射点は最後の有効な位置
+              currentR = lastValidR;
+              currentC = lastValidC;
+              currentDir = newDir;
+            } else {
+              break; // 反射できない場合は終了
+            }
+          } else {
+            break; // 駒に当たって停止した場合は終了
           }
         }
       });
+    } else {
+      // 通常の角行移動
+      moves = moves.concat(getSlidingMoves(state, r, c, directions));
     }
     
     return moves;
@@ -1833,6 +1845,19 @@
   document.getElementById("reset-button").addEventListener("click", function(){
     if (confirm("本当にリセットしますか？")) {
       pauseTimer();
+      
+      // 配置完了ボタンを削除
+      const setupButton = document.getElementById("setup-complete-button");
+      if (setupButton) {
+        setupButton.remove();
+      }
+      
+      // 影武者選択完了ボタンを削除
+      const shadowButton = document.getElementById("shadow-selection-complete-button");
+      if (shadowButton) {
+        shadowButton.remove();
+      }
+      
       initGame();
     }
   });
