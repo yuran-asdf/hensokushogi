@@ -520,11 +520,11 @@
       if (gameState.replayMode) {
         message = `棋譜再生モード - 手数: ${gameState.replayPosition + 1}/${gameState.gameHistory.length}`;
       } else if (gameState.setupPhase) {
-        const player = gameState.setupPhase === "sente" ? "先手" : "後手";
+        const player = getRoleName(gameState.setupPhase);
         const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
         message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください（配置済みの駒をクリックすると駒台に戻せます）`;
       } else if (gameState.shadowSelectionPhase) {
-        const player = gameState.shadowSelectionPhase === "sente" ? "先手" : "後手";
+        const player = getRoleName(gameState.shadowSelectionPhase);
         message = `影武者将棋: ${player}の影武者駒選択フェーズ - 玉以外の自分の駒をクリックして影武者駒を選択してください`;
       } else {
         const currentPlayer = getRoleName(gameState.activePlayer);
@@ -605,8 +605,8 @@
       return;
     }
     
-    // 現在のプレイヤーの待ったを使用済みにする
-    gameState.undoUsed[gameState.activePlayer] = true;
+    // 待ったを使用したプレイヤーを記録
+    const undoPlayer = gameState.activePlayer;
     
     // 2手指し将棋の場合の特別処理
     if (gameState.variants.doubleMove) {
@@ -635,12 +635,12 @@
     if (gameState.gameHistory.length > 0) {
       const previousState = gameState.gameHistory[gameState.gameHistory.length - 1];
       restoreGameState(previousState);
-      // 待ったを使用したプレイヤーのフラグを維持
-      gameState.undoUsed[gameState.activePlayer] = true;
+      // 待ったを使用したプレイヤーのフラグを設定
+      gameState.undoUsed[undoPlayer] = true;
     } else {
       // 初期状態に戻す
       initGame();
-      gameState.undoUsed[gameState.activePlayer] = true;
+      gameState.undoUsed[undoPlayer] = true;
       return;
     }
     
@@ -2110,9 +2110,33 @@
       alert("初形状態でなければ先後入れ替えはできません。");
       return;
     }
+    
+    if (gameState.setupPhase) {
+      alert("配置フェーズ中は先後入れ替えはできません。");
+      return;
+    }
+    
+    if (gameState.shadowSelectionPhase) {
+      alert("影武者選択フェーズ中は先後入れ替えはできません。");
+      return;
+    }
+    
+    if (gameState.replayMode) {
+      alert("棋譜再生モード中は先後入れ替えはできません。");
+      return;
+    }
+    
     swapped = !swapped;
     gameState.activePlayer = swapped ? "gote" : "sente";
+    
+    // undoUsedフラグを入れ替える
+    const tempUndoUsed = gameState.undoUsed.sente;
+    gameState.undoUsed.sente = gameState.undoUsed.gote;
+    gameState.undoUsed.gote = tempUndoUsed;
+    
     updateMessage();
+    updateUndoButtonState();
+    
     const senteRole = document.querySelector("#sente-clock .role-display");
     const goteRole = document.querySelector("#gote-clock .role-display");
     if (senteRole && goteRole) {
