@@ -344,6 +344,8 @@
     <button id="reset-button">リセット</button>
     <button id="swap-button">先後を入れ替える</button>
     <button id="fullscreen-button">全画面モード</button>
+    <button id="undo-button">待った</button>
+    <button id="replay-button">棋譜再生</button>
   </div>
 
   <!-- タイマー関連スクリプト -->
@@ -466,18 +468,22 @@
       if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
         gameState.moveCountInTurn = 1;
         updateMessage();
+        updateUndoButtonState();
         return; // ターン変更なし
       }
       
       gameState.activePlayer = (gameState.activePlayer === "sente") ? "gote" : "sente";
       gameState.moveCountInTurn = 0;
       updateMessage();
+      updateUndoButtonState();
       switchClock();
     }
 
     function updateMessage() {
       let message;
-      if (gameState.setupPhase) {
+      if (gameState.replayMode) {
+        message = `棋譜再生モード - 手数: ${gameState.replayPosition + 1}/${gameState.gameHistory.length}`;
+      } else if (gameState.setupPhase) {
         const player = gameState.setupPhase === "sente" ? "先手" : "後手";
         const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
         message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください（配置済みの駒をクリックすると駒台に戻せます）`;
@@ -492,6 +498,14 @@
         } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
           message += " (2手目)";
         }
+        
+        // 待った使用状況を表示
+        const undoStatus = [];
+        if (gameState.undoUsed.sente) undoStatus.push("先手：使用済み");
+        if (gameState.undoUsed.gote) undoStatus.push("後手：使用済み");
+        if (undoStatus.length > 0) {
+          message += ` (待った: ${undoStatus.join(", ")})`;
+        }
       }
       document.getElementById("message").textContent = message;
     }
@@ -505,6 +519,207 @@
   function cellId(r, c) { return r + "-" + c; }
 
   function cloneGameState(state) { return JSON.parse(JSON.stringify(state)); }
+
+  function saveGameState() {
+    if (gameState.replayMode) return; // 棋譜再生モード中は保存しない
+    
+    const stateToSave = {
+      board: JSON.parse(JSON.stringify(gameState.board)),
+      activePlayer: gameState.activePlayer,
+      senteHand: JSON.parse(JSON.stringify(gameState.senteHand)),
+      goteHand: JSON.parse(JSON.stringify(gameState.goteHand)),
+      moveCount: gameState.moveCount,
+      moveCountInTurn: gameState.moveCountInTurn,
+      shadowPieces: JSON.parse(JSON.stringify(gameState.shadowPieces)),
+      pieceIdCounter: gameState.pieceIdCounter,
+      undoUsed: JSON.parse(JSON.stringify(gameState.undoUsed))
+    };
+    
+    gameState.gameHistory.push(stateToSave);
+  }
+
+  function canUndo() {
+    if (gameState.replayMode) return false;
+    if (gameState.setupPhase || gameState.shadowSelectionPhase) return false;
+    if (gameState.undoUsed[gameState.activePlayer]) return false;
+    return gameState.gameHistory.length >= 2;
+  }
+
+  function performUndo() {
+    if (!canUndo()) {
+      alert("待ったできません。");
+      return;
+    }
+    
+    // 現在のプレイヤーの待ったを使用済みにする
+    gameState.undoUsed[gameState.activePlayer] = true;
+    
+    // 2手分巻き戻す
+    gameState.gameHistory.pop(); // 現在の状態を削除
+    if (gameState.gameHistory.length > 0) {
+      gameState.gameHistory.pop(); // 相手の前の手も削除
+    }
+    
+    if (gameState.gameHistory.length > 0) {
+      const previousState = gameState.gameHistory[gameState.gameHistory.length - 1];
+      restoreGameState(previousState);
+    } else {
+      // 初期状態に戻す
+      initGame();
+      return;
+    }
+    
+    renderBoard();
+    updateMessage();
+    updateUndoButtonState();
+    
+    // タイマーを現在のプレイヤーに合わせる
+    if (timerInterval) {
+      pauseTimer();
+      startTimerForPlayer(gameState.activePlayer);
+    }
+  }
+
+  function restoreGameState(state) {
+    gameState.board = JSON.parse(JSON.stringify(state.board));
+    gameState.activePlayer = state.activePlayer;
+    gameState.senteHand = JSON.parse(JSON.stringify(state.senteHand));
+    gameState.goteHand = JSON.parse(JSON.stringify(state.goteHand));
+    gameState.moveCount = state.moveCount;
+    gameState.moveCountInTurn = state.moveCountInTurn;
+    gameState.shadowPieces = JSON.parse(JSON.stringify(state.shadowPieces));
+    gameState.pieceIdCounter = state.pieceIdCounter;
+    gameState.undoUsed = JSON.parse(JSON.stringify(state.undoUsed));
+    gameState.selected = null;
+  }
+
+  function enterReplayMode() {
+    if (gameState.gameHistory.length === 0) {
+      alert("棋譜がありません。");
+      return;
+    }
+    
+    if (confirm("棋譜再生モードに移行しますか？")) {
+      gameState.replayMode = true;
+      gameState.replayPosition = gameState.gameHistory.length - 1;
+      pauseTimer();
+      showReplayControls();
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function exitReplayMode() {
+    gameState.replayMode = false;
+    gameState.replayPosition = -1;
+    hideReplayControls();
+    renderBoard();
+    updateMessage();
+    
+    // タイマーを再開
+    if (gameState.gameHistory.length > 0) {
+      startTimerForPlayer(gameState.activePlayer);
+    }
+  }
+
+  function replayPrevious() {
+    if (gameState.replayPosition > 0) {
+      gameState.replayPosition--;
+      const state = gameState.gameHistory[gameState.replayPosition];
+      restoreGameState(state);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function replayNext() {
+    if (gameState.replayPosition < gameState.gameHistory.length - 1) {
+      gameState.replayPosition++;
+      const state = gameState.gameHistory[gameState.replayPosition];
+      restoreGameState(state);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function replayFirst() {
+    if (gameState.gameHistory.length > 0) {
+      gameState.replayPosition = 0;
+      const state = gameState.gameHistory[gameState.replayPosition];
+      restoreGameState(state);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function replayLast() {
+    if (gameState.gameHistory.length > 0) {
+      gameState.replayPosition = gameState.gameHistory.length - 1;
+      const state = gameState.gameHistory[gameState.replayPosition];
+      restoreGameState(state);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function showReplayControls() {
+    // 棋譜再生コントロールを表示
+    const replayControls = document.createElement("div");
+    replayControls.id = "replay-controls";
+    replayControls.style.textAlign = "center";
+    replayControls.style.margin = "10px";
+    replayControls.style.padding = "10px";
+    replayControls.style.backgroundColor = "#f0f0f0";
+    replayControls.style.borderRadius = "5px";
+    
+    const controlsHTML = `
+      <div style="margin-bottom: 10px;">
+        <strong>棋譜再生モード</strong> 
+        <span style="margin-left: 20px;">手数: ${gameState.replayPosition + 1}/${gameState.gameHistory.length}</span>
+      </div>
+      <div>
+        <button onclick="replayFirst()" style="margin: 2px; padding: 5px 10px;"><<</button>
+        <button onclick="replayPrevious()" style="margin: 2px; padding: 5px 10px;"><</button>
+        <button onclick="replayNext()" style="margin: 2px; padding: 5px 10px;">></button>
+        <button onclick="replayLast()" style="margin: 2px; padding: 5px 10px;">>></button>
+        <button onclick="exitReplayMode()" style="margin: 2px 2px 2px 20px; padding: 5px 10px; background-color: #ff4444; color: white;">棋譜再生終了</button>
+      </div>
+    `;
+    
+    replayControls.innerHTML = controlsHTML;
+    
+    const resetContainer = document.querySelector('.reset-container');
+    resetContainer.appendChild(replayControls);
+  }
+
+  function hideReplayControls() {
+    const replayControls = document.getElementById("replay-controls");
+    if (replayControls) {
+      replayControls.remove();
+    }
+  }
+
+  function updateUndoButtonState() {
+    const undoButton = document.getElementById("undo-button");
+    if (undoButton) {
+      if (canUndo()) {
+        undoButton.disabled = false;
+        undoButton.style.backgroundColor = "#4CAF50";
+        undoButton.style.color = "white";
+      } else {
+        undoButton.disabled = true;
+        undoButton.style.backgroundColor = "#ccc";
+        undoButton.style.color = "#666";
+      }
+    }
+  }
+
+  // グローバル関数として公開
+  window.replayFirst = replayFirst;
+  window.replayPrevious = replayPrevious;
+  window.replayNext = replayNext;
+  window.replayLast = replayLast;
+  window.exitReplayMode = exitReplayMode;
 
   function getLegalMovesInState(state, piece, r, c) {
     let moves = [];
@@ -934,6 +1149,9 @@
       }
     }
     gameState.moveCount++;
+    
+    // ゲーム状態を保存
+    saveGameState();
   }
 
   function isPromotable(type) {
@@ -1027,6 +1245,11 @@
   async function handleCellClick() {
     const r = parseInt(this.dataset.row);
     const c = parseInt(this.dataset.col);
+    
+    // 棋譜再生モード中は操作不可
+    if (gameState.replayMode) {
+      return;
+    }
     
     // 影武者選択フェーズの場合
     if (gameState.shadowSelectionPhase) {
@@ -1129,6 +1352,10 @@
         
         dropPiece(gameState.selected, r, c);
         gameState.moveCount++;
+        
+        // ゲーム状態を保存
+        saveGameState();
+        
         gameState.selected = null;
         clearHighlights();
         renderBoard();
@@ -1308,6 +1535,9 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
+        // 棋譜再生モード中は操作不可
+        if (gameState.replayMode) return;
+        
         // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
         if (gameState.setupPhase && gameState.setupPhase !== "sente") return;
         
@@ -1338,6 +1568,9 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
+        // 棋譜再生モード中は操作不可
+        if (gameState.replayMode) return;
+        
         // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
         if (gameState.setupPhase && gameState.setupPhase !== "gote") return;
         
@@ -1392,7 +1625,11 @@
       shadowPieces: { sente: null, gote: null },
       setupPhase: variants.hiddenShogi ? "sente" : null,
       shadowSelectionPhase: null,
-      pieceIdCounter: 0
+      pieceIdCounter: 0,
+      gameHistory: [],
+      undoUsed: { sente: false, gote: false },
+      replayMode: false,
+      replayPosition: -1
     };
     
     for (let r = 0; r < 9; r++) { gameState.board.push(new Array(9).fill(null)); }
@@ -1413,7 +1650,13 @@
       startTimerForPlayer(gameState.activePlayer);
     }
     
+    // 待ったボタンの表示状態を更新
+    updateUndoButtonState();
+    
     updateRoleDisplays();
+    
+    // 初期状態を保存
+    saveGameState();
   }
 
   function setupNormalGame() {
@@ -1858,8 +2101,21 @@
         shadowButton.remove();
       }
       
+      // 棋譜再生コントロールを削除
+      hideReplayControls();
+      
       initGame();
     }
+  });
+
+  // 待ったボタンの処理
+  document.getElementById("undo-button").addEventListener("click", function(){
+    performUndo();
+  });
+
+  // 棋譜再生ボタンの処理
+  document.getElementById("replay-button").addEventListener("click", function(){
+    enterReplayMode();
   });
   
   // 全画面モードボタンの処理（対象は #game-area のみ）
