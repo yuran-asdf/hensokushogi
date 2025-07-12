@@ -509,12 +509,17 @@
     }
 
     function updateMessage() {
-      const currentPlayer = getRoleName(gameState.activePlayer);
-      let message = `${currentPlayer}の番`;
-      if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
-        message += " (1手目)";
-      } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
-        message += " (2手目)";
+      let message;
+      if (gameState.setupPhase) {
+        message = `かくし将棋: ${gameState.setupPhase === "sente" ? "先手" : "後手"}の配置フェーズ`;
+      } else {
+        const currentPlayer = getRoleName(gameState.activePlayer);
+        message = `${currentPlayer}の番`;
+        if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
+          message += " (1手目)";
+        } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
+          message += " (2手目)";
+        }
       }
       document.getElementById("message").textContent = message;
     }
@@ -1216,6 +1221,9 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
+        // 配置フェーズ中は無効
+        if (gameState.setupPhase) return;
+        
         if (gameState.activePlayer === "sente") {
           if (gameState.selected && gameState.selected.hand &&
               gameState.selected.owner === "sente" &&
@@ -1239,6 +1247,9 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
+        // 配置フェーズ中は無効
+        if (gameState.setupPhase) return;
+        
         if (gameState.activePlayer === "gote") {
           if (gameState.selected && gameState.selected.hand &&
               gameState.selected.owner === "gote" &&
@@ -1428,6 +1439,8 @@
       <div class="setup-modal">
         <h2>${gameState.setupPhase === "sente" ? "先手" : "後手"}の駒配置</h2>
         <p>手前3列（${gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目"}）に駒を配置してください</p>
+        <p>下の駒を選択してから、青い配置可能エリアをクリックして配置します。</p>
+        <p><strong>配置しなかった駒は消えてゲームで使用できなくなります。</strong></p>
         <div class="setup-pieces" id="setup-pieces"></div>
         <button onclick="finishSetupPhase()">配置完了</button>
       </div>
@@ -1435,10 +1448,14 @@
     document.body.appendChild(setupDiv);
     
     updateSetupPieces();
+    renderSetupBoard();
+    renderHands();
   }
 
   function updateSetupPieces() {
     const setupPiecesDiv = document.getElementById("setup-pieces");
+    if (!setupPiecesDiv) return;
+    
     setupPiecesDiv.innerHTML = "";
     
     const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
@@ -1449,6 +1466,39 @@
       pieceDiv.onclick = () => selectSetupPiece(index);
       setupPiecesDiv.appendChild(pieceDiv);
     });
+  }
+  
+  function renderSetupBoard() {
+    // 配置フェーズ中は相手の駒を表示しない
+    const boardBody = document.getElementById("board-body");
+    boardBody.innerHTML = "";
+    for (let r = 0; r < 9; r++) {
+      const tr = document.createElement("tr");
+      for (let c = 0; c < 9; c++) {
+        const td = document.createElement("td");
+        td.dataset.row = r;
+        td.dataset.col = c;
+        
+        // 配置可能エリアをハイライト
+        const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
+        if (validRows.includes(r)) {
+          td.style.backgroundColor = "#F0F8FF";
+        }
+        
+        td.addEventListener("click", handleCellClick);
+        const piece = gameState.board[r][c];
+        if (piece && piece.owner === gameState.setupPhase) {
+          const span = document.createElement("span");
+          span.classList.add("piece");
+          if (piece.owner === "gote") span.classList.add("gote");
+          span.textContent = getPieceSymbol(piece);
+          td.appendChild(span);
+        }
+        tr.appendChild(td);
+      }
+      boardBody.appendChild(tr);
+    }
+    updateBoardPiecesFontSize();
   }
 
   let selectedSetupPiece = null;
@@ -1473,8 +1523,12 @@
         return;
       }
       
-      if (gameState.board[r][c] !== null) {
-        alert("既に駒が配置されています。");
+      // 既に自分の駒がある場合は入れ替え
+      if (gameState.board[r][c] !== null && gameState.board[r][c].owner === gameState.setupPhase) {
+        // 既存の駒を持ち駒に戻す
+        hand.push(gameState.board[r][c]);
+      } else if (gameState.board[r][c] !== null) {
+        alert("そこには配置できません。");
         return;
       }
       
@@ -1485,12 +1539,25 @@
       
       // 表示更新
       updateSetupPieces();
-      renderBoard();
+      renderSetupBoard();
+      renderHands();
+      
+      // 選択状態をリセット
+      document.querySelectorAll('.setup-piece').forEach(piece => {
+        piece.classList.remove('selected');
+      });
     }
   };
 
   // かくし将棋の配置完了
   window.finishSetupPhase = function() {
+    // 残った持ち駒を削除
+    if (gameState.setupPhase === "sente") {
+      gameState.senteHand = [];
+    } else {
+      gameState.goteHand = [];
+    }
+    
     document.querySelector('.setup-phase').remove();
     
     if (gameState.setupPhase === "sente") {
@@ -1506,6 +1573,8 @@
         selectShadowPiecesForHiddenShogi();
       }
       
+      // 通常の盤面表示に戻す
+      renderBoard();
       startTimerForPlayer(gameState.activePlayer);
     }
   };
