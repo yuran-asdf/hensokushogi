@@ -195,12 +195,12 @@
     }
     
     #sente-hand-container .hand-timer {
-      transform: rotate(90deg);
+      transform: rotate(0deg);
       transform-origin: center;
     }
     
     #gote-hand-container .hand-timer {
-      transform: rotate(-90deg);
+      transform: rotate(180deg);
       transform-origin: center;
     }
     /* 盤上の駒デザイン – 共通（セルの80%） */
@@ -578,7 +578,20 @@
     if (gameState.replayMode) return false;
     if (gameState.setupPhase || gameState.shadowSelectionPhase) return false;
     if (gameState.undoUsed[gameState.activePlayer]) return false;
-    return gameState.gameHistory.length >= 2;
+    
+    // 2手指し将棋の場合の特別処理
+    if (gameState.variants.doubleMove) {
+      if (gameState.moveCountInTurn === 0) {
+        // ターンの最初の場合：4手必要
+        return gameState.gameHistory.length >= 4;
+      } else {
+        // ターンの2手目の場合：3手必要
+        return gameState.gameHistory.length >= 3;
+      }
+    } else {
+      // 通常将棋の場合：2手必要
+      return gameState.gameHistory.length >= 2;
+    }
   }
 
   function performUndo() {
@@ -595,10 +608,28 @@
     // 現在のプレイヤーの待ったを使用済みにする
     gameState.undoUsed[gameState.activePlayer] = true;
     
-    // 2手分巻き戻す
-    gameState.gameHistory.pop(); // 現在の状態を削除
-    if (gameState.gameHistory.length > 0) {
-      gameState.gameHistory.pop(); // 相手の前の手も削除
+    // 2手指し将棋の場合の特別処理
+    if (gameState.variants.doubleMove) {
+      let movesToUndo;
+      
+      if (gameState.moveCountInTurn === 0) {
+        // ターンの最初の場合：相手の2手と自分の前の2手を戻す（計4手）
+        movesToUndo = 4;
+      } else {
+        // ターンの2手目の場合：自分の1手目と相手の前の2手を戻す（計3手）
+        movesToUndo = 3;
+      }
+      
+      // 指定した手数分巻き戻す
+      for (let i = 0; i < movesToUndo && gameState.gameHistory.length > 0; i++) {
+        gameState.gameHistory.pop();
+      }
+    } else {
+      // 通常将棋の場合：2手分巻き戻す
+      gameState.gameHistory.pop(); // 現在の状態を削除
+      if (gameState.gameHistory.length > 0) {
+        gameState.gameHistory.pop(); // 相手の前の手も削除
+      }
     }
     
     if (gameState.gameHistory.length > 0) {
