@@ -480,7 +480,10 @@
       if (gameState.setupPhase) {
         const player = gameState.setupPhase === "sente" ? "先手" : "後手";
         const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
-        message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください`;
+        message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください（配置済みの駒をクリックすると駒台に戻せます）`;
+      } else if (gameState.shadowSelectionPhase) {
+        const player = gameState.shadowSelectionPhase === "sente" ? "先手" : "後手";
+        message = `影武者将棋: ${player}の影武者駒選択フェーズ - 玉以外の自分の駒をクリックして影武者駒を選択してください`;
       } else {
         const currentPlayer = getRoleName(gameState.activePlayer);
         message = `${currentPlayer}の番`;
@@ -1013,8 +1016,39 @@
     const r = parseInt(this.dataset.row);
     const c = parseInt(this.dataset.col);
     
+    // 影武者選択フェーズの場合
+    if (gameState.shadowSelectionPhase) {
+      const piece = gameState.board[r][c];
+      if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
+        // 影武者駒を選択
+        gameState.shadowPieces[gameState.shadowSelectionPhase] = piece.id;
+        
+        // 表示更新
+        renderBoard();
+        updateMessage();
+      }
+      return;
+    }
+    
     // かくし将棋の配置フェーズの場合
     if (gameState.setupPhase) {
+      // 既に配置された自分の駒をクリックした場合、駒台に戻す
+      if (gameState.board[r][c] !== null && gameState.board[r][c].owner === gameState.setupPhase) {
+        const piece = gameState.board[r][c];
+        const hand = gameState.setupPhase === "sente" ? gameState.senteHand : gameState.goteHand;
+        
+        // 駒を駒台に戻す
+        hand.push(piece);
+        gameState.board[r][c] = null;
+        
+        // 選択状態をリセット
+        gameState.selected = null;
+        
+        // 表示更新
+        renderBoard();
+        return;
+      }
+      
       // 持ち駒が選択されている場合のみ配置可能
       if (gameState.selected && gameState.selected.hand && gameState.selected.owner === gameState.setupPhase) {
         const validRows = gameState.setupPhase === "sente" ? [6, 7, 8] : [0, 1, 2];
@@ -1151,6 +1185,20 @@
             td.style.backgroundColor = "#E8F5E8";
             td.style.borderColor = "#4CAF50";
           }
+        } else if (gameState.shadowSelectionPhase) {
+          // 影武者選択フェーズ中のハイライト
+          const piece = gameState.board[r][c];
+          if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
+            if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
+              // 選択済みの影武者駒をハイライト
+              td.style.backgroundColor = "#FFE0E0";
+              td.style.borderColor = "#FF5722";
+            } else {
+              // 選択可能な駒をハイライト
+              td.style.backgroundColor = "#FFF3E0";
+              td.style.borderColor = "#FF9800";
+            }
+          }
         } else {
           // 通常ゲーム中のハイライト
           if (gameState.selected && !gameState.selected.hand &&
@@ -1205,6 +1253,11 @@
       }
     }
     
+    // 影武者選択フェーズ中は通常通り表示
+    if (gameState.shadowSelectionPhase) {
+      // 特別な処理は不要、通常通り表示
+    }
+    
     senteHandArea.style.height = "100%";
     senteHandArea.style.width = "100%";
     goteHandArea.style.height = "100%";
@@ -1246,6 +1299,9 @@
         // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
         if (gameState.setupPhase && gameState.setupPhase !== "sente") return;
         
+        // 影武者選択フェーズ中は持ち駒操作不可
+        if (gameState.shadowSelectionPhase) return;
+        
         const activePlayer = gameState.setupPhase || gameState.activePlayer;
         if (activePlayer === "sente") {
           if (gameState.selected && gameState.selected.hand &&
@@ -1272,6 +1328,9 @@
       span.addEventListener("click", () => {
         // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
         if (gameState.setupPhase && gameState.setupPhase !== "gote") return;
+        
+        // 影武者選択フェーズ中は持ち駒操作不可
+        if (gameState.shadowSelectionPhase) return;
         
         const activePlayer = gameState.setupPhase || gameState.activePlayer;
         if (activePlayer === "gote") {
@@ -1320,6 +1379,7 @@
       variants: variants,
       shadowPieces: { sente: null, gote: null },
       setupPhase: variants.hiddenShogi ? "sente" : null,
+      shadowSelectionPhase: null,
       pieceIdCounter: 0
     };
     
@@ -1337,7 +1397,7 @@
     renderBoard();
     initializeTimer();
     
-    if (!variants.hiddenShogi) {
+    if (!variants.hiddenShogi && !variants.shadowShogi) {
       startTimerForPlayer(gameState.activePlayer);
     }
     
@@ -1377,9 +1437,10 @@
     gameState.board[8][7] = { type: 'knight', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
     gameState.board[8][8] = { type: 'lance', owner: "sente", promoted: false, id: gameState.pieceIdCounter++ };
     
-    // 影武者将棋の場合、影武者駒を選択
+    // 影武者将棋の場合、影武者駒選択フェーズを開始
     if (gameState.variants.shadowShogi) {
-      selectShadowPieces();
+      gameState.shadowSelectionPhase = "sente";
+      showShadowSelectionPhase();
     }
   }
 
@@ -1481,7 +1542,72 @@
     updateMessage();
   }
 
+  function showShadowSelectionPhase() {
+    // 影武者選択完了ボタンを追加
+    const shadowButton = document.createElement("button");
+    shadowButton.id = "shadow-selection-complete-button";
+    shadowButton.textContent = "影武者選択完了";
+    shadowButton.style.fontSize = "18px";
+    shadowButton.style.padding = "10px 20px";
+    shadowButton.style.margin = "10px";
+    shadowButton.style.backgroundColor = "#FF9800";
+    shadowButton.style.color = "white";
+    shadowButton.style.border = "none";
+    shadowButton.style.borderRadius = "5px";
+    shadowButton.style.cursor = "pointer";
+    shadowButton.onclick = finishShadowSelectionPhase;
+    
+    // リセットボタンの隣に配置
+    const resetContainer = document.querySelector('.reset-container');
+    resetContainer.appendChild(shadowButton);
+    
+    // 盤面と駒台を更新
+    renderBoard();
+    updateMessage();
+  }
 
+
+
+  // 影武者選択完了
+  window.finishShadowSelectionPhase = function() {
+    if (gameState.shadowSelectionPhase === "sente") {
+      // 先手の影武者選択が完了、後手の番
+      if (gameState.shadowPieces.sente === null) {
+        alert("先手の影武者駒を選択してください。");
+        return;
+      }
+      
+      gameState.shadowSelectionPhase = "gote";
+      
+      // ボタンテキストを更新
+      const shadowButton = document.getElementById("shadow-selection-complete-button");
+      if (shadowButton) {
+        shadowButton.textContent = "影武者選択完了";
+      }
+      
+      renderBoard();
+      updateMessage();
+    } else {
+      // 後手の影武者選択も完了、ゲーム開始
+      if (gameState.shadowPieces.gote === null) {
+        alert("後手の影武者駒を選択してください。");
+        return;
+      }
+      
+      gameState.shadowSelectionPhase = null;
+      
+      // 影武者選択完了ボタンを削除
+      const shadowButton = document.getElementById("shadow-selection-complete-button");
+      if (shadowButton) {
+        shadowButton.remove();
+      }
+      
+      // 通常の盤面表示に戻す
+      renderBoard();
+      updateMessage();
+      startTimerForPlayer(gameState.activePlayer);
+    }
+  };
 
   // かくし将棋の配置完了
   window.finishSetupPhase = function() {
@@ -1514,9 +1640,11 @@
         setupButton.remove();
       }
       
-      // 影武者将棋の場合、影武者駒を選択
+      // 影武者将棋の場合、影武者駒選択フェーズを開始
       if (gameState.variants.shadowShogi) {
-        selectShadowPiecesForHiddenShogi();
+        gameState.shadowSelectionPhase = "sente";
+        showShadowSelectionPhase();
+        return;
       }
       
       // 通常の盤面表示に戻す
@@ -1808,6 +1936,20 @@
           if (validRows.includes(r)) {
             td.style.backgroundColor = "#E8F5E8";
             td.style.borderColor = "#4CAF50";
+          }
+        } else if (gameState.shadowSelectionPhase) {
+          // 影武者選択フェーズ中のハイライト
+          const piece = gameState.board[r][c];
+          if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
+            if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
+              // 選択済みの影武者駒をハイライト
+              td.style.backgroundColor = "#FFE0E0";
+              td.style.borderColor = "#FF5722";
+            } else {
+              // 選択可能な駒をハイライト
+              td.style.backgroundColor = "#FFF3E0";
+              td.style.borderColor = "#FF9800";
+            }
           }
         } else {
           // 通常ゲーム中のハイライト
