@@ -175,6 +175,33 @@
       justify-content: center;
       align-items: center;
       padding: 5px;
+      position: relative;
+    }
+    
+    /* 駒台内タイマー */
+    .hand-timer {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      background: rgba(0, 0, 0, 0.3);
+      color: white;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: bold;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      z-index: 10;
+    }
+    
+    #sente-hand-container .hand-timer {
+      transform: rotate(90deg);
+      transform-origin: center;
+    }
+    
+    #gote-hand-container .hand-timer {
+      transform: rotate(-90deg);
+      transform-origin: center;
     }
     /* 盤上の駒デザイン – 共通（セルの80%） */
     .piece, .hand-piece {
@@ -315,6 +342,7 @@
     <div id="game-area">
       <div id="sente-hand-container">
         <div class="hand-area" id="sente-hand-area"></div>
+        <div class="hand-timer" id="sente-hand-timer">10:00</div>
       </div>
       <div id="board-container">
         <table class="board">
@@ -323,6 +351,7 @@
       </div>
       <div id="gote-hand-container">
         <div class="hand-area" id="gote-hand-area"></div>
+        <div class="hand-timer" id="gote-hand-timer">10:00</div>
       </div>
     </div>
     
@@ -370,6 +399,10 @@
     function updateClockDisplay() {
       document.querySelector("#sente-clock .time-display").textContent = formatTime(senteTime);
       document.querySelector("#gote-clock .time-display").textContent = formatTime(goteTime);
+      
+      // 駒台のタイマーも更新
+      document.getElementById("sente-hand-timer").textContent = formatTime(senteTime);
+      document.getElementById("gote-hand-timer").textContent = formatTime(goteTime);
     }
 
     function getRoleName(player) {
@@ -389,6 +422,9 @@
         if (radio.checked) { timerMode = radio.value; }
       }
       updateClockDisplay();
+      
+      // 駒台タイマーのサイズも初期化
+      updateHandTimersSize(450);
     }
 
     function startTimerForPlayer(player) {
@@ -551,6 +587,11 @@
       return;
     }
     
+    if (gameState.undoUsed[gameState.activePlayer]) {
+      alert("このプレイヤーは既に待ったを使用済みです。");
+      return;
+    }
+    
     // 現在のプレイヤーの待ったを使用済みにする
     gameState.undoUsed[gameState.activePlayer] = true;
     
@@ -563,9 +604,12 @@
     if (gameState.gameHistory.length > 0) {
       const previousState = gameState.gameHistory[gameState.gameHistory.length - 1];
       restoreGameState(previousState);
+      // 待ったを使用したプレイヤーのフラグを維持
+      gameState.undoUsed[gameState.activePlayer] = true;
     } else {
       // 初期状態に戻す
       initGame();
+      gameState.undoUsed[gameState.activePlayer] = true;
       return;
     }
     
@@ -2138,11 +2182,11 @@
   });
   
   // 全画面モード時と通常時のレイアウト調整
-  function updateFullScreenLayout() {
+    function updateFullScreenLayout() {
     const boardContainer = document.getElementById("board-container");
     const senteHand = document.getElementById("sente-hand-container");
     const goteHand = document.getElementById("gote-hand-container");
-  
+
     // 全画面モードの場合、利用可能領域に合わせてサイズを調整
     if (document.fullscreenElement ||
         document.webkitFullscreenElement ||
@@ -2151,20 +2195,45 @@
       const availableWidth = window.innerWidth - 200; // 両側の持駒領域 200px を除く
       const availableHeight = window.innerHeight;
       const boardSize = Math.min(availableWidth, availableHeight);
-  
+
       boardContainer.style.width = boardSize + "px";
       boardContainer.style.height = boardSize + "px";
       senteHand.style.height = boardSize + "px";
       goteHand.style.height = boardSize + "px";
+      
+      // 駒台のタイマーサイズも調整
+      updateHandTimersSize(boardSize);
     } else {
       // 通常時は元のサイズに戻す
       boardContainer.style.width = "450px";
       boardContainer.style.height = "450px";
       senteHand.style.height = "450px";
       goteHand.style.height = "450px";
+      
+      // 駒台のタイマーサイズも元に戻す
+      updateHandTimersSize(450);
     }
     // 持ち駒のサイズも更新
     updateHandPiecesSize();
+  }
+
+  function updateHandTimersSize(boardSize) {
+    const senteHandTimer = document.getElementById("sente-hand-timer");
+    const goteHandTimer = document.getElementById("gote-hand-timer");
+    
+    // ボードサイズに比例してタイマーサイズを調整
+    const fontSize = Math.max(8, Math.min(14, boardSize / 40));
+    const padding = Math.max(2, Math.min(6, boardSize / 100));
+    
+    if (senteHandTimer) {
+      senteHandTimer.style.fontSize = fontSize + "px";
+      senteHandTimer.style.padding = padding + "px " + (padding * 2) + "px";
+    }
+    
+    if (goteHandTimer) {
+      goteHandTimer.style.fontSize = fontSize + "px";
+      goteHandTimer.style.padding = padding + "px " + (padding * 2) + "px";
+    }
   }
   
   document.addEventListener("fullscreenchange", updateFullScreenLayout);
