@@ -294,7 +294,6 @@
     }
     
     /* 持ち駒サイズ更新は JS に任せるため、ここではダミー関数 */
-    function /* dummy */ updateFullScreenLayout() {}
   </style>
 </head>
 <body>
@@ -593,22 +592,26 @@
 
   function cloneGameState(state) { return JSON.parse(JSON.stringify(state)); }
 
+  // --- 棋譜再生機能を1から再設計 ---
   function saveGameState() {
-    if (gameState.replayMode) return; // 棋譜再生モード中は保存しない
-    // 1手ごとに状態を保存する
-    const stateToSave = {
-      board: JSON.parse(JSON.stringify(gameState.board)),
+    if (gameState.replayMode) return;
+    // 1手ごとに完全な状態を保存
+    const stateToSave = JSON.stringify({
+      board: gameState.board,
       activePlayer: gameState.activePlayer,
-      senteHand: JSON.parse(JSON.stringify(gameState.senteHand)),
-      goteHand: JSON.parse(JSON.stringify(gameState.goteHand)),
+      senteHand: gameState.senteHand,
+      goteHand: gameState.goteHand,
       moveCount: gameState.moveCount,
       moveCountInTurn: gameState.moveCountInTurn,
-      shadowPieces: JSON.parse(JSON.stringify(gameState.shadowPieces)),
+      shadowPieces: gameState.shadowPieces,
       pieceIdCounter: gameState.pieceIdCounter,
-      undoUsed: JSON.parse(JSON.stringify(gameState.undoUsed)),
-      swapped: swapped // 先後入れ替え状態も保存
-    };
-    gameState.gameHistory.push(stateToSave);
+      undoUsed: gameState.undoUsed,
+      swapped: swapped
+    });
+    // 直前と同じ状態は保存しない
+    if (gameState.gameHistory.length === 0 || gameState.gameHistory[gameState.gameHistory.length-1] !== stateToSave) {
+      gameState.gameHistory.push(stateToSave);
+    }
   }
 
   function canUndo() {
@@ -695,7 +698,8 @@
     }
   }
 
-  function restoreGameState(state) {
+  function restoreGameState(stateStr) {
+    const state = JSON.parse(stateStr);
     gameState.board = JSON.parse(JSON.stringify(state.board));
     gameState.activePlayer = state.activePlayer;
     gameState.senteHand = JSON.parse(JSON.stringify(state.senteHand));
@@ -706,14 +710,11 @@
     gameState.pieceIdCounter = state.pieceIdCounter;
     gameState.undoUsed = JSON.parse(JSON.stringify(state.undoUsed));
     gameState.selected = null;
-    
-    // 先後入れ替え状態を復元
     if (state.swapped !== undefined) {
       swapped = state.swapped;
     }
-    
-    updateMessage(); // メッセージを更新して手番を反映
-    updateRoleDisplays(); // 先後の表示を更新
+    updateMessage();
+    updateRoleDisplays();
   }
 
   function enterReplayMode() {
@@ -726,7 +727,6 @@
       gameState.replayPosition = gameState.gameHistory.length - 1;
       pauseTimer();
       showReplayControls();
-      // その手数の状態を正確に復元
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
@@ -736,15 +736,13 @@
   function exitReplayMode() {
     // 棋譜再生終了時は最新の棋譜状態を復元
     if (gameState.gameHistory.length > 0) {
-      const lastState = gameState.gameHistory[gameState.gameHistory.length - 1];
-      restoreGameState(lastState);
+      restoreGameState(gameState.gameHistory[gameState.gameHistory.length - 1]);
     }
     gameState.replayMode = false;
     gameState.replayPosition = -1;
     hideReplayControls();
     renderBoard();
     updateMessage();
-    // タイマーを再開
     if (gameState.gameHistory.length > 0) {
       startTimerForPlayer(gameState.activePlayer);
     }
@@ -771,7 +769,7 @@
   function replayFirst() {
     if (gameState.gameHistory.length > 0) {
       gameState.replayPosition = 0;
-      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+      restoreGameState(gameState.gameHistory[0]);
       renderBoard();
       updateMessage();
     }
@@ -1591,7 +1589,18 @@
           const span = document.createElement("span");
           span.classList.add("piece");
           if (piece.owner === "gote") span.classList.add("gote");
+          // 王も含め全ての駒で同じクラス・ハイライト
           span.textContent = getPieceSymbol(piece);
+          // 影武者選択フェーズでハイライトされている場合はspanにも明示的に色を付与
+          if (gameState.shadowSelectionPhase && piece.owner === gameState.shadowSelectionPhase) {
+            if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
+              span.style.backgroundColor = "#FFE0E0";
+              span.style.borderColor = "#FF5722";
+            } else {
+              span.style.backgroundColor = "#FFF3E0";
+              span.style.borderColor = "#FF9800";
+            }
+          }
           td.appendChild(span);
         }
         tr.appendChild(td);
