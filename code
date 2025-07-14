@@ -1199,6 +1199,9 @@
       capturePiece(target); 
     }
     
+    // 駒の移動を行う前に現在の状態を保存
+    saveGameState();
+    
     gameState.board[toRow][toCol] = piece;
     gameState.board[fromRow][fromCol] = null;
     
@@ -1440,13 +1443,14 @@
         dropPiece(gameState.selected, r, c);
         gameState.moveCount++;
         
-        // ゲーム状態を保存
+        // 手番を変更する前の状態を保存
         saveGameState();
         
+        // 手番を変更し、選択状態をクリア
+        switchTurn();
         gameState.selected = null;
         clearHighlights();
         renderBoard();
-        switchTurn();
         return;
       } else {
         gameState.selected = null;
