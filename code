@@ -562,7 +562,7 @@
         message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください（配置済みの駒をクリックすると駒台に戻せます）`;
       } else if (gameState.shadowSelectionPhase) {
         const player = getRoleName(gameState.shadowSelectionPhase);
-        message = `影武者将棋: ${player}の影武者駒選択フェーズ - 玉以外の自分の駒をクリックして影武者駒を選択してください`;
+        message = `影武者将棋: ${player}の影武者駒選択フェーズ - 自分の駒をクリックして影武者駒を選択してください（王も可）`;
       } else {
         const currentPlayer = getRoleName(gameState.activePlayer);
         message = `${currentPlayer}の番`;
@@ -595,7 +595,7 @@
 
   function saveGameState() {
     if (gameState.replayMode) return; // 棋譜再生モード中は保存しない
-    
+    // 1手ごとに状態を保存する
     const stateToSave = {
       board: JSON.parse(JSON.stringify(gameState.board)),
       activePlayer: gameState.activePlayer,
@@ -608,7 +608,6 @@
       undoUsed: JSON.parse(JSON.stringify(gameState.undoUsed)),
       swapped: swapped // 先後入れ替え状態も保存
     };
-    
     gameState.gameHistory.push(stateToSave);
   }
 
@@ -722,12 +721,13 @@
       alert("棋譜がありません。");
       return;
     }
-    
     if (confirm("棋譜再生モードに移行しますか？")) {
       gameState.replayMode = true;
       gameState.replayPosition = gameState.gameHistory.length - 1;
       pauseTimer();
       showReplayControls();
+      // その手数の状態を正確に復元
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
     }
@@ -753,8 +753,7 @@
   function replayPrevious() {
     if (gameState.replayPosition > 0) {
       gameState.replayPosition--;
-      const state = gameState.gameHistory[gameState.replayPosition];
-      restoreGameState(state);
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
     }
@@ -763,8 +762,7 @@
   function replayNext() {
     if (gameState.replayPosition < gameState.gameHistory.length - 1) {
       gameState.replayPosition++;
-      const state = gameState.gameHistory[gameState.replayPosition];
-      restoreGameState(state);
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
     }
@@ -773,8 +771,7 @@
   function replayFirst() {
     if (gameState.gameHistory.length > 0) {
       gameState.replayPosition = 0;
-      const state = gameState.gameHistory[gameState.replayPosition];
-      restoreGameState(state);
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
     }
@@ -783,8 +780,7 @@
   function replayLast() {
     if (gameState.gameHistory.length > 0) {
       gameState.replayPosition = gameState.gameHistory.length - 1;
-      const state = gameState.gameHistory[gameState.replayPosition];
-      restoreGameState(state);
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
     }
@@ -1385,11 +1381,9 @@
     // 影武者選択フェーズの場合
     if (gameState.shadowSelectionPhase) {
       const piece = gameState.board[r][c];
-      if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
-        // 影武者駒を選択
+      if (piece && piece.owner === gameState.shadowSelectionPhase) {
+        // 影武者駒を選択（王も可）
         gameState.shadowPieces[gameState.shadowSelectionPhase] = piece.id;
-        
-        // 表示更新
         renderBoard();
         updateMessage();
       }
@@ -1559,7 +1553,7 @@
         } else if (gameState.shadowSelectionPhase) {
           // 影武者選択フェーズ中のハイライト
           const piece = gameState.board[r][c];
-          if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
+          if (piece && piece.owner === gameState.shadowSelectionPhase) {
             if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
               // 選択済みの影武者駒をハイライト
               td.style.backgroundColor = "#FFE0E0";
