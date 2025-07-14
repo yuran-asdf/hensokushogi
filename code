@@ -305,6 +305,8 @@
     <span>タイマーモード:</span>
     <label><input type="radio" name="timer-mode" value="instant" checked> 切れ負け</label>
     <label><input type="radio" name="timer-mode" value="delay"> 切れたら10秒</label>
+    <label><input type="radio" name="timer-mode" value="permove"> 1手10秒</label>
+    <label><input type="radio" name="timer-mode" value="none"> 時間制限なし</label>
   </div>
 
   <!-- 変則将棋モード設定 -->
@@ -430,7 +432,41 @@
     function startTimerForPlayer(player) {
       activeTimerPlayer = player;
       if (timerInterval) clearInterval(timerInterval);
+      if (timerMode === "none") {
+        // 時間制限なし
+        return;
+      }
       timerInterval = setInterval(() => {
+        if (timerMode === "permove") {
+          // 1手10秒モード
+          if (player === "sente") {
+            senteTime = 10;
+          } else {
+            goteTime = 10;
+          }
+          updateClockDisplay();
+          clearInterval(timerInterval);
+          let permoveTimer = 10;
+          timerInterval = setInterval(() => {
+            if (player === "sente") {
+              senteTime--;
+              permoveTimer--;
+              if (senteTime <= 0) {
+                clearInterval(timerInterval);
+                alert(`${getRoleName("sente")}の1手10秒超過です！${getRoleName("gote")}の勝ちです。`);
+              }
+            } else {
+              goteTime--;
+              permoveTimer--;
+              if (goteTime <= 0) {
+                clearInterval(timerInterval);
+                alert(`${getRoleName("gote")}の1手10秒超過です！${getRoleName("sente")}の勝ちです。`);
+              }
+            }
+            updateClockDisplay();
+          }, 1000);
+          return;
+        }
         if (player === "sente") {
           if (timerMode === "instant") {
             senteTime--;
@@ -518,7 +554,8 @@
     function updateMessage() {
       let message;
       if (gameState.replayMode) {
-        message = `棋譜再生モード - 手数: ${gameState.replayPosition + 1}/${gameState.gameHistory.length}`;
+        let moveNum = (gameState.replayPosition >= 0) ? gameState.replayPosition + 1 : 0;
+        message = `棋譜再生モード - 手数: ${moveNum}/${gameState.gameHistory.length}`;
       } else if (gameState.setupPhase) {
         const player = getRoleName(gameState.setupPhase);
         const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
@@ -697,12 +734,16 @@
   }
 
   function exitReplayMode() {
+    // 棋譜再生終了時は最新の棋譜状態を復元
+    if (gameState.gameHistory.length > 0) {
+      const lastState = gameState.gameHistory[gameState.gameHistory.length - 1];
+      restoreGameState(lastState);
+    }
     gameState.replayMode = false;
     gameState.replayPosition = -1;
     hideReplayControls();
     renderBoard();
     updateMessage();
-    
     // タイマーを再開
     if (gameState.gameHistory.length > 0) {
       startTimerForPlayer(gameState.activePlayer);
@@ -759,10 +800,11 @@
     replayControls.style.backgroundColor = "#f0f0f0";
     replayControls.style.borderRadius = "5px";
     
+    let moveNum = (gameState.replayPosition >= 0) ? gameState.replayPosition + 1 : 0;
     const controlsHTML = `
       <div style="margin-bottom: 10px;">
         <strong>棋譜再生モード</strong> 
-        <span style="margin-left: 20px;">手数: ${gameState.replayPosition + 1}/${gameState.gameHistory.length}</span>
+        <span style="margin-left: 20px;">手数: ${moveNum}/${gameState.gameHistory.length}</span>
       </div>
       <div>
         <button onclick="replayFirst()" style="margin: 2px; padding: 5px 10px;"><<</button>
@@ -1171,22 +1213,21 @@
       const clone = cloneGameState(gameState);
       clone.board[toRow][toCol] = clone.board[fromRow][fromCol];
       clone.board[fromRow][fromCol] = null;
-      
       const opponent = (piece.owner === "sente") ? "gote" : "sente";
-      
-      // 影武者将棋も有効な場合、影武者駒への王手をチェック
+      // 影武者将棋も有効な場合は影武者駒のみ判定
       if (gameState.variants.shadowShogi) {
         const shadowPiece = findShadowPiece(clone, opponent);
         if (shadowPiece && isShadowPieceInCheck(clone, shadowPiece, piece.owner)) {
           alert(`${getRoleName(piece.owner)}の勝ちです！影武者駒に王手をかけました。`);
           return;
         }
-      }
-      
-      // 通常の王手チェック
-      if (isKingInCheckInState(clone, opponent)) {
-        alert(`${getRoleName(piece.owner)}の勝ちです！王手をかけました。`);
-        return;
+        // 影武者将棋が有効な場合は通常の王手判定はスキップ
+      } else {
+        // 通常の王手チェック
+        if (isKingInCheckInState(clone, opponent)) {
+          alert(`${getRoleName(piece.owner)}の勝ちです！王手をかけました。`);
+          return;
+        }
       }
     }
     
