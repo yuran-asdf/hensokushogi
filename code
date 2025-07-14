@@ -734,8 +734,10 @@
   }
 
   function exitReplayMode() {
-    // 棋譜再生終了時は最新の棋譜状態を復元
-    if (gameState.gameHistory.length > 0) {
+    // 棋譜再生終了時は再生中の盤面・手番に戻す
+    if (gameState.replayMode && gameState.replayPosition >= 0 && gameState.gameHistory.length > 0) {
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+    } else if (gameState.gameHistory.length > 0) {
       restoreGameState(gameState.gameHistory[gameState.gameHistory.length - 1]);
     }
     gameState.replayMode = false;
@@ -1586,7 +1588,7 @@
           if (piece.owner === "gote") span.classList.add("gote");
           // 王も含め全ての駒で同じクラス・ハイライト
           span.textContent = getPieceSymbol(piece);
-          // 影武者選択フェーズでハイライトされている場合はspanにも明示的に色を付与
+          // 影武者選択フェーズで王も含め全ての自駒でspanにも明示的に色を付与
           if (gameState.shadowSelectionPhase && piece.owner === gameState.shadowSelectionPhase) {
             if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
               span.style.backgroundColor = "#FFE0E0";
