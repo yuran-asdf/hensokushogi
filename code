@@ -568,7 +568,8 @@
       moveCountInTurn: gameState.moveCountInTurn,
       shadowPieces: JSON.parse(JSON.stringify(gameState.shadowPieces)),
       pieceIdCounter: gameState.pieceIdCounter,
-      undoUsed: JSON.parse(JSON.stringify(gameState.undoUsed))
+      undoUsed: JSON.parse(JSON.stringify(gameState.undoUsed)),
+      swapped: swapped // 先後入れ替え状態も保存
     };
     
     gameState.gameHistory.push(stateToSave);
@@ -669,6 +670,14 @@
     gameState.pieceIdCounter = state.pieceIdCounter;
     gameState.undoUsed = JSON.parse(JSON.stringify(state.undoUsed));
     gameState.selected = null;
+    
+    // 先後入れ替え状態を復元
+    if (state.swapped !== undefined) {
+      swapped = state.swapped;
+    }
+    
+    updateMessage(); // メッセージを更新して手番を反映
+    updateRoleDisplays(); // 先後の表示を更新
   }
 
   function enterReplayMode() {
