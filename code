@@ -765,6 +765,9 @@
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
+    } else if (gameState.replayPosition === gameState.gameHistory.length - 1) {
+      // すでに最新局面なら何もしない（ただし参照はできる）
+      // これにより最新局面も他と同じように参照できる
     }
   }
 
@@ -2413,9 +2416,9 @@
             td.style.borderColor = "#4CAF50";
           }
         } else if (gameState.shadowSelectionPhase) {
-          // 影武者選択フェーズ中のハイライト
+          // 影武者選択フェーズ中のハイライト（王も含め全ての自駒を同じように）
           const piece = gameState.board[r][c];
-          if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
+          if (piece && piece.owner === gameState.shadowSelectionPhase) {
             if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
               // 選択済みの影武者駒をハイライト
               td.style.backgroundColor = "#FFE0E0";
