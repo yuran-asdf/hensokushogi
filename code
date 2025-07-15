@@ -175,6 +175,33 @@
       justify-content: center;
       align-items: center;
       padding: 5px;
+      position: relative;
+    }
+    
+    /* 駒台内タイマー */
+    .hand-timer {
+      position: absolute;
+      bottom: 5px;
+      right: 5px;
+      background: rgba(0, 0, 0, 0.3);
+      color: white;
+      padding: 2px 4px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: bold;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+      z-index: 10;
+    }
+    
+    #sente-hand-container .hand-timer {
+      transform: rotate(0deg);
+      transform-origin: center;
+    }
+    
+    #gote-hand-container .hand-timer {
+      transform: rotate(180deg);
+      transform-origin: center;
     }
     /* 盤上の駒デザイン – 共通（セルの80%） */
     .piece, .hand-piece {
@@ -267,7 +294,6 @@
     }
     
     /* 持ち駒サイズ更新は JS に任せるため、ここではダミー関数 */
-    function /* dummy */ updateFullScreenLayout() {}
   </style>
 </head>
 <body>
@@ -278,6 +304,8 @@
     <span>タイマーモード:</span>
     <label><input type="radio" name="timer-mode" value="instant" checked> 切れ負け</label>
     <label><input type="radio" name="timer-mode" value="delay"> 切れたら10秒</label>
+    <label><input type="radio" name="timer-mode" value="permove"> 1手10秒</label>
+    <label><input type="radio" name="timer-mode" value="none"> 時間制限なし</label>
   </div>
 
   <!-- 変則将棋モード設定 -->
@@ -315,6 +343,7 @@
     <div id="game-area">
       <div id="sente-hand-container">
         <div class="hand-area" id="sente-hand-area"></div>
+        <div class="hand-timer" id="sente-hand-timer">10:00</div>
       </div>
       <div id="board-container">
         <table class="board">
@@ -323,6 +352,7 @@
       </div>
       <div id="gote-hand-container">
         <div class="hand-area" id="gote-hand-area"></div>
+        <div class="hand-timer" id="gote-hand-timer">10:00</div>
       </div>
     </div>
     
@@ -344,6 +374,8 @@
     <button id="reset-button">リセット</button>
     <button id="swap-button">先後を入れ替える</button>
     <button id="fullscreen-button">全画面モード</button>
+    <button id="undo-button">待った</button>
+    <button id="replay-button">棋譜再生</button>
   </div>
 
   <!-- タイマー関連スクリプト -->
@@ -368,6 +400,10 @@
     function updateClockDisplay() {
       document.querySelector("#sente-clock .time-display").textContent = formatTime(senteTime);
       document.querySelector("#gote-clock .time-display").textContent = formatTime(goteTime);
+      
+      // 駒台のタイマーも更新
+      document.getElementById("sente-hand-timer").textContent = formatTime(senteTime);
+      document.getElementById("gote-hand-timer").textContent = formatTime(goteTime);
     }
 
     function getRoleName(player) {
@@ -387,12 +423,49 @@
         if (radio.checked) { timerMode = radio.value; }
       }
       updateClockDisplay();
+      
+      // 駒台タイマーのサイズも初期化
+      updateHandTimersSize(450);
     }
 
     function startTimerForPlayer(player) {
       activeTimerPlayer = player;
       if (timerInterval) clearInterval(timerInterval);
+      if (timerMode === "none") {
+        // 時間制限なし
+        return;
+      }
       timerInterval = setInterval(() => {
+        if (timerMode === "permove") {
+          // 1手10秒モード
+          if (player === "sente") {
+            senteTime = 10;
+          } else {
+            goteTime = 10;
+          }
+          updateClockDisplay();
+          clearInterval(timerInterval);
+          let permoveTimer = 10;
+          timerInterval = setInterval(() => {
+            if (player === "sente") {
+              senteTime--;
+              permoveTimer--;
+              if (senteTime <= 0) {
+                clearInterval(timerInterval);
+                alert(`${getRoleName("sente")}の1手10秒超過です！${getRoleName("gote")}の勝ちです。`);
+              }
+            } else {
+              goteTime--;
+              permoveTimer--;
+              if (goteTime <= 0) {
+                clearInterval(timerInterval);
+                alert(`${getRoleName("gote")}の1手10秒超過です！${getRoleName("sente")}の勝ちです。`);
+              }
+            }
+            updateClockDisplay();
+          }, 1000);
+          return;
+        }
         if (player === "sente") {
           if (timerMode === "instant") {
             senteTime--;
@@ -466,24 +539,29 @@
       if (gameState.variants.doubleMove && gameState.moveCountInTurn === 0) {
         gameState.moveCountInTurn = 1;
         updateMessage();
+        updateUndoButtonState();
         return; // ターン変更なし
       }
       
       gameState.activePlayer = (gameState.activePlayer === "sente") ? "gote" : "sente";
       gameState.moveCountInTurn = 0;
       updateMessage();
+      updateUndoButtonState();
       switchClock();
     }
 
     function updateMessage() {
       let message;
-      if (gameState.setupPhase) {
-        const player = gameState.setupPhase === "sente" ? "先手" : "後手";
+      if (gameState.replayMode) {
+        let moveNum = (gameState.replayPosition >= 0) ? gameState.replayPosition + 1 : 0;
+        message = `棋譜再生モード - 手数: ${moveNum}/${gameState.gameHistory.length}`;
+      } else if (gameState.setupPhase) {
+        const player = getRoleName(gameState.setupPhase);
         const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
         message = `かくし将棋: ${player}の配置フェーズ - 駒台の駒を選択して${area}に配置してください（配置済みの駒をクリックすると駒台に戻せます）`;
       } else if (gameState.shadowSelectionPhase) {
-        const player = gameState.shadowSelectionPhase === "sente" ? "先手" : "後手";
-        message = `影武者将棋: ${player}の影武者駒選択フェーズ - 玉以外の自分の駒をクリックして影武者駒を選択してください`;
+        const player = getRoleName(gameState.shadowSelectionPhase);
+        message = `影武者将棋: ${player}の影武者駒選択フェーズ - 自分の駒をクリックして影武者駒を選択してください（王も可）`;
       } else {
         const currentPlayer = getRoleName(gameState.activePlayer);
         message = `${currentPlayer}の番`;
@@ -491,6 +569,14 @@
           message += " (1手目)";
         } else if (gameState.variants.doubleMove && gameState.moveCountInTurn === 1) {
           message += " (2手目)";
+        }
+        
+        // 待った使用状況を表示
+        const undoStatus = [];
+        if (gameState.undoUsed.sente) undoStatus.push(`${getRoleName("sente")}：使用済み`);
+        if (gameState.undoUsed.gote) undoStatus.push(`${getRoleName("gote")}：使用済み`);
+        if (undoStatus.length > 0) {
+          message += ` (待った: ${undoStatus.join(", ")})`;
         }
       }
       document.getElementById("message").textContent = message;
@@ -505,6 +591,260 @@
   function cellId(r, c) { return r + "-" + c; }
 
   function cloneGameState(state) { return JSON.parse(JSON.stringify(state)); }
+
+  // --- 棋譜再生機能を1から再設計 ---
+  function saveGameState() {
+    if (gameState.replayMode) return;
+    // 1手ごとに完全な状態を保存
+    const stateToSave = JSON.stringify({
+      board: gameState.board,
+      activePlayer: gameState.activePlayer,
+      senteHand: gameState.senteHand,
+      goteHand: gameState.goteHand,
+      moveCount: gameState.moveCount,
+      moveCountInTurn: gameState.moveCountInTurn,
+      shadowPieces: gameState.shadowPieces,
+      pieceIdCounter: gameState.pieceIdCounter,
+      undoUsed: gameState.undoUsed,
+      swapped: swapped
+    });
+    // 直前と同じ状態は保存しない
+    if (gameState.gameHistory.length === 0 || gameState.gameHistory[gameState.gameHistory.length-1] !== stateToSave) {
+      gameState.gameHistory.push(stateToSave);
+    }
+  }
+
+  function canUndo() {
+    if (gameState.replayMode) return false;
+    if (gameState.setupPhase || gameState.shadowSelectionPhase) return false;
+    if (gameState.undoUsed[gameState.activePlayer]) return false;
+    
+    // 2手指し将棋の場合の特別処理
+    if (gameState.variants.doubleMove) {
+      if (gameState.moveCountInTurn === 0) {
+        // ターンの最初の場合：4手必要
+        return gameState.gameHistory.length >= 4;
+      } else {
+        // ターンの2手目の場合：3手必要
+        return gameState.gameHistory.length >= 3;
+      }
+    } else {
+      // 通常将棋の場合：2手必要
+      return gameState.gameHistory.length >= 2;
+    }
+  }
+
+  function performUndo() {
+    if (!canUndo()) {
+      alert("待ったできません。");
+      return;
+    }
+    
+    if (gameState.undoUsed[gameState.activePlayer]) {
+      alert("このプレイヤーは既に待ったを使用済みです。");
+      return;
+    }
+    
+    // 待ったを使用したプレイヤーを記録
+    const undoPlayer = gameState.activePlayer;
+    
+    // 2手指し将棋の場合の特別処理
+    if (gameState.variants.doubleMove) {
+      let movesToUndo;
+      
+      if (gameState.moveCountInTurn === 0) {
+        // ターンの最初の場合：相手の2手と自分の前の2手を戻す（計4手）
+        movesToUndo = 4;
+      } else {
+        // ターンの2手目の場合：自分の1手目と相手の前の2手を戻す（計3手）
+        movesToUndo = 3;
+      }
+      
+      // 指定した手数分巻き戻す
+      for (let i = 0; i < movesToUndo && gameState.gameHistory.length > 0; i++) {
+        gameState.gameHistory.pop();
+      }
+    } else {
+      // 通常将棋の場合：2手分巻き戻す
+      gameState.gameHistory.pop(); // 現在の状態を削除
+      if (gameState.gameHistory.length > 0) {
+        gameState.gameHistory.pop(); // 相手の前の手も削除
+      }
+    }
+    
+    if (gameState.gameHistory.length > 0) {
+      const previousState = gameState.gameHistory[gameState.gameHistory.length - 1];
+      restoreGameState(previousState);
+      // 待ったを使用したプレイヤーのフラグを設定
+      gameState.undoUsed[undoPlayer] = true;
+      // 待ったを使用したプレイヤーが再びターンを持つ
+      gameState.activePlayer = undoPlayer;
+    } else {
+      // 初期状態に戻す
+      initGame();
+      gameState.undoUsed[undoPlayer] = true;
+      gameState.activePlayer = undoPlayer;
+      return;
+    }
+    
+    renderBoard();
+    updateMessage();
+    updateUndoButtonState();
+    
+    // タイマーを現在のプレイヤーに合わせる
+    if (timerInterval) {
+      pauseTimer();
+      startTimerForPlayer(gameState.activePlayer);
+    }
+  }
+
+  function restoreGameState(stateStr) {
+    const state = JSON.parse(stateStr);
+    gameState.board = JSON.parse(JSON.stringify(state.board));
+    gameState.activePlayer = state.activePlayer;
+    gameState.senteHand = JSON.parse(JSON.stringify(state.senteHand));
+    gameState.goteHand = JSON.parse(JSON.stringify(state.goteHand));
+    gameState.moveCount = state.moveCount;
+    gameState.moveCountInTurn = state.moveCountInTurn;
+    gameState.shadowPieces = JSON.parse(JSON.stringify(state.shadowPieces));
+    gameState.pieceIdCounter = state.pieceIdCounter;
+    gameState.undoUsed = JSON.parse(JSON.stringify(state.undoUsed));
+    gameState.selected = null;
+    if (state.swapped !== undefined) {
+      swapped = state.swapped;
+    }
+    updateMessage();
+    updateRoleDisplays();
+  }
+
+  function enterReplayMode() {
+    if (gameState.gameHistory.length === 0) {
+      alert("棋譜がありません。");
+      return;
+    }
+    if (confirm("棋譜再生モードに移行しますか？")) {
+      gameState.replayMode = true;
+      gameState.replayPosition = gameState.gameHistory.length - 1;
+      pauseTimer();
+      showReplayControls();
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function exitReplayMode() {
+    // 棋譜再生終了時は再生中の盤面・手番に戻す
+    if (gameState.replayMode && gameState.replayPosition >= 0 && gameState.gameHistory.length > 0) {
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+    } else if (gameState.gameHistory.length > 0) {
+      restoreGameState(gameState.gameHistory[gameState.gameHistory.length - 1]);
+    }
+    gameState.replayMode = false;
+    gameState.replayPosition = -1;
+    hideReplayControls();
+    renderBoard();
+    updateMessage();
+    if (gameState.gameHistory.length > 0) {
+      startTimerForPlayer(gameState.activePlayer);
+    }
+  }
+
+  function replayPrevious() {
+    if (gameState.replayPosition > 0) {
+      gameState.replayPosition--;
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function replayNext() {
+    if (gameState.replayPosition < gameState.gameHistory.length - 1) {
+      gameState.replayPosition++;
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function replayFirst() {
+    if (gameState.gameHistory.length > 0) {
+      gameState.replayPosition = 0;
+      restoreGameState(gameState.gameHistory[0]);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function replayLast() {
+    if (gameState.gameHistory.length > 0) {
+      gameState.replayPosition = gameState.gameHistory.length - 1;
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+      renderBoard();
+      updateMessage();
+    }
+  }
+
+  function showReplayControls() {
+    // 棋譜再生コントロールを表示
+    const replayControls = document.createElement("div");
+    replayControls.id = "replay-controls";
+    replayControls.style.textAlign = "center";
+    replayControls.style.margin = "10px";
+    replayControls.style.padding = "10px";
+    replayControls.style.backgroundColor = "#f0f0f0";
+    replayControls.style.borderRadius = "5px";
+    
+    let moveNum = (gameState.replayPosition >= 0) ? gameState.replayPosition + 1 : 0;
+    const controlsHTML = `
+      <div style="margin-bottom: 10px;">
+        <strong>棋譜再生モード</strong> 
+        <span style="margin-left: 20px;">手数: ${moveNum}/${gameState.gameHistory.length}</span>
+      </div>
+      <div>
+        <button onclick="replayFirst()" style="margin: 2px; padding: 5px 10px;"><<</button>
+        <button onclick="replayPrevious()" style="margin: 2px; padding: 5px 10px;"><</button>
+        <button onclick="replayNext()" style="margin: 2px; padding: 5px 10px;">></button>
+        <button onclick="replayLast()" style="margin: 2px; padding: 5px 10px;">>></button>
+        <button onclick="exitReplayMode()" style="margin: 2px 2px 2px 20px; padding: 5px 10px; background-color: #ff4444; color: white;">棋譜再生終了</button>
+      </div>
+    `;
+    
+    replayControls.innerHTML = controlsHTML;
+    
+    const resetContainer = document.querySelector('.reset-container');
+    resetContainer.appendChild(replayControls);
+  }
+
+  function hideReplayControls() {
+    const replayControls = document.getElementById("replay-controls");
+    if (replayControls) {
+      replayControls.remove();
+    }
+  }
+
+  function updateUndoButtonState() {
+    const undoButton = document.getElementById("undo-button");
+    if (undoButton) {
+      if (canUndo()) {
+        undoButton.disabled = false;
+        undoButton.style.backgroundColor = "#4CAF50";
+        undoButton.style.color = "white";
+      } else {
+        undoButton.disabled = true;
+        undoButton.style.backgroundColor = "#ccc";
+        undoButton.style.color = "#666";
+      }
+    }
+  }
+
+  // グローバル関数として公開
+  window.replayFirst = replayFirst;
+  window.replayPrevious = replayPrevious;
+  window.replayNext = replayNext;
+  window.replayLast = replayLast;
+  window.exitReplayMode = exitReplayMode;
 
   function getLegalMovesInState(state, piece, r, c) {
     let moves = [];
@@ -869,22 +1209,21 @@
       const clone = cloneGameState(gameState);
       clone.board[toRow][toCol] = clone.board[fromRow][fromCol];
       clone.board[fromRow][fromCol] = null;
-      
       const opponent = (piece.owner === "sente") ? "gote" : "sente";
-      
-      // 影武者将棋も有効な場合、影武者駒への王手をチェック
+      // 影武者将棋も有効な場合は影武者駒のみ判定
       if (gameState.variants.shadowShogi) {
         const shadowPiece = findShadowPiece(clone, opponent);
         if (shadowPiece && isShadowPieceInCheck(clone, shadowPiece, piece.owner)) {
           alert(`${getRoleName(piece.owner)}の勝ちです！影武者駒に王手をかけました。`);
           return;
         }
-      }
-      
-      // 通常の王手チェック
-      if (isKingInCheckInState(clone, opponent)) {
-        alert(`${getRoleName(piece.owner)}の勝ちです！王手をかけました。`);
-        return;
+        // 影武者将棋が有効な場合は通常の王手判定はスキップ
+      } else {
+        // 通常の王手チェック
+        if (isKingInCheckInState(clone, opponent)) {
+          alert(`${getRoleName(piece.owner)}の勝ちです！王手をかけました。`);
+          return;
+        }
       }
     }
     
@@ -897,9 +1236,12 @@
       capturePiece(target); 
     }
     
+    // 駒の移動を行う前に現在の状態を保存（棋譜再生時は保存しない）
+    saveGameState();
+
     gameState.board[toRow][toCol] = piece;
     gameState.board[fromRow][fromCol] = null;
-    
+
     // 資本還元将棋の手駒上限チェック
     if (gameState.variants.capitalReturn) {
       const handCount = gameState.activePlayer === "sente" ? 
@@ -910,7 +1252,7 @@
         return;
       }
     }
-    
+
     const promotionZone = (piece.owner === "sente") ? [0, 1, 2] : [6, 7, 8];
     if (!piece.promoted && isPromotable(piece.type)) {
       if (promotionZone.includes(fromRow) || promotionZone.includes(toRow)) {
@@ -1028,14 +1370,17 @@
     const r = parseInt(this.dataset.row);
     const c = parseInt(this.dataset.col);
     
+    // 棋譜再生モード中は操作不可
+    if (gameState.replayMode) {
+      return;
+    }
+    
     // 影武者選択フェーズの場合
     if (gameState.shadowSelectionPhase) {
       const piece = gameState.board[r][c];
-      if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
-        // 影武者駒を選択
+      if (piece && piece.owner === gameState.shadowSelectionPhase) {
+        // 影武者駒を選択（王も可）
         gameState.shadowPieces[gameState.shadowSelectionPhase] = piece.id;
-        
-        // 表示更新
         renderBoard();
         updateMessage();
       }
@@ -1129,10 +1474,15 @@
         
         dropPiece(gameState.selected, r, c);
         gameState.moveCount++;
+        
+        // 手番を変更する前の状態を保存
+        saveGameState();
+        
+        // 手番を変更し、選択状態をクリア
+        switchTurn();
         gameState.selected = null;
         clearHighlights();
         renderBoard();
-        switchTurn();
         return;
       } else {
         gameState.selected = null;
@@ -1198,15 +1548,13 @@
             td.style.borderColor = "#4CAF50";
           }
         } else if (gameState.shadowSelectionPhase) {
-          // 影武者選択フェーズ中のハイライト
+          // 影武者選択フェーズ中のハイライト（王も含め全ての自駒を同じように）
           const piece = gameState.board[r][c];
-          if (piece && piece.owner === gameState.shadowSelectionPhase && piece.type !== "king") {
+          if (piece && piece.owner === gameState.shadowSelectionPhase) {
             if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
-              // 選択済みの影武者駒をハイライト
               td.style.backgroundColor = "#FFE0E0";
               td.style.borderColor = "#FF5722";
             } else {
-              // 選択可能な駒をハイライト
               td.style.backgroundColor = "#FFF3E0";
               td.style.borderColor = "#FF9800";
             }
@@ -1238,7 +1586,18 @@
           const span = document.createElement("span");
           span.classList.add("piece");
           if (piece.owner === "gote") span.classList.add("gote");
+          // 王も含め全ての駒で同じクラス・ハイライト
           span.textContent = getPieceSymbol(piece);
+          // 影武者選択フェーズで王も含め全ての自駒でspanにも明示的に色を付与
+          if (gameState.shadowSelectionPhase && piece.owner === gameState.shadowSelectionPhase) {
+            if (gameState.shadowPieces[gameState.shadowSelectionPhase] === piece.id) {
+              span.style.backgroundColor = "#FFE0E0";
+              span.style.borderColor = "#FF5722";
+            } else {
+              span.style.backgroundColor = "#FFF3E0";
+              span.style.borderColor = "#FF9800";
+            }
+          }
           td.appendChild(span);
         }
         tr.appendChild(td);
@@ -1308,6 +1667,9 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
+        // 棋譜再生モード中は操作不可
+        if (gameState.replayMode) return;
+        
         // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
         if (gameState.setupPhase && gameState.setupPhase !== "sente") return;
         
@@ -1338,6 +1700,9 @@
       span.textContent = getPieceSymbol(piece);
       span.dataset.handIndex = index;
       span.addEventListener("click", () => {
+        // 棋譜再生モード中は操作不可
+        if (gameState.replayMode) return;
+        
         // 配置フェーズ中は現在配置中のプレイヤーのみ操作可能
         if (gameState.setupPhase && gameState.setupPhase !== "gote") return;
         
@@ -1369,6 +1734,9 @@
   }
 
   function initGame() {
+    // 先後入れ替え状態をリセット
+    swapped = false;
+    
     // 変則将棋モードの設定を取得
     const variants = {
       shadowShogi: document.getElementById("shadow-shogi").checked,
@@ -1392,7 +1760,11 @@
       shadowPieces: { sente: null, gote: null },
       setupPhase: variants.hiddenShogi ? "sente" : null,
       shadowSelectionPhase: null,
-      pieceIdCounter: 0
+      pieceIdCounter: 0,
+      gameHistory: [],
+      undoUsed: { sente: false, gote: false },
+      replayMode: false,
+      replayPosition: -1
     };
     
     for (let r = 0; r < 9; r++) { gameState.board.push(new Array(9).fill(null)); }
@@ -1413,7 +1785,23 @@
       startTimerForPlayer(gameState.activePlayer);
     }
     
+    // 待ったボタンの表示状態を更新
+    updateUndoButtonState();
+    
+    // role-displayを初期状態にリセット
+    const senteRole = document.querySelector("#sente-clock .role-display");
+    const goteRole = document.querySelector("#gote-clock .role-display");
+    if (senteRole && goteRole) {
+      senteRole.setAttribute("data-original", "先手");
+      goteRole.setAttribute("data-original", "後手");
+      senteRole.textContent = "先手";
+      goteRole.textContent = "後手";
+    }
+    
     updateRoleDisplays();
+    
+    // 初期状態を保存
+    saveGameState();
   }
 
   function setupNormalGame() {
@@ -1585,7 +1973,7 @@
     if (gameState.shadowSelectionPhase === "sente") {
       // 先手の影武者選択が完了、後手の番
       if (gameState.shadowPieces.sente === null) {
-        alert("先手の影武者駒を選択してください。");
+        alert(`${getRoleName("sente")}の影武者駒を選択してください。`);
         return;
       }
       
@@ -1602,7 +1990,7 @@
     } else {
       // 後手の影武者選択も完了、ゲーム開始
       if (gameState.shadowPieces.gote === null) {
-        alert("後手の影武者駒を選択してください。");
+        alert(`${getRoleName("gote")}の影武者駒を選択してください。`);
         return;
       }
       
@@ -1792,9 +2180,33 @@
       alert("初形状態でなければ先後入れ替えはできません。");
       return;
     }
+    
+    if (gameState.setupPhase) {
+      alert("配置フェーズ中は先後入れ替えはできません。");
+      return;
+    }
+    
+    if (gameState.shadowSelectionPhase) {
+      alert("影武者選択フェーズ中は先後入れ替えはできません。");
+      return;
+    }
+    
+    if (gameState.replayMode) {
+      alert("棋譜再生モード中は先後入れ替えはできません。");
+      return;
+    }
+    
     swapped = !swapped;
     gameState.activePlayer = swapped ? "gote" : "sente";
+    
+    // undoUsedフラグを入れ替える
+    const tempUndoUsed = gameState.undoUsed.sente;
+    gameState.undoUsed.sente = gameState.undoUsed.gote;
+    gameState.undoUsed.gote = tempUndoUsed;
+    
     updateMessage();
+    updateUndoButtonState();
+    
     const senteRole = document.querySelector("#sente-clock .role-display");
     const goteRole = document.querySelector("#gote-clock .role-display");
     if (senteRole && goteRole) {
@@ -1858,8 +2270,21 @@
         shadowButton.remove();
       }
       
+      // 棋譜再生コントロールを削除
+      hideReplayControls();
+      
       initGame();
     }
+  });
+
+  // 待ったボタンの処理
+  document.getElementById("undo-button").addEventListener("click", function(){
+    performUndo();
+  });
+
+  // 棋譜再生ボタンの処理
+  document.getElementById("replay-button").addEventListener("click", function(){
+    enterReplayMode();
   });
   
   // 全画面モードボタンの処理（対象は #game-area のみ）
@@ -1882,11 +2307,11 @@
   });
   
   // 全画面モード時と通常時のレイアウト調整
-  function updateFullScreenLayout() {
+    function updateFullScreenLayout() {
     const boardContainer = document.getElementById("board-container");
     const senteHand = document.getElementById("sente-hand-container");
     const goteHand = document.getElementById("gote-hand-container");
-  
+
     // 全画面モードの場合、利用可能領域に合わせてサイズを調整
     if (document.fullscreenElement ||
         document.webkitFullscreenElement ||
@@ -1895,20 +2320,45 @@
       const availableWidth = window.innerWidth - 200; // 両側の持駒領域 200px を除く
       const availableHeight = window.innerHeight;
       const boardSize = Math.min(availableWidth, availableHeight);
-  
+
       boardContainer.style.width = boardSize + "px";
       boardContainer.style.height = boardSize + "px";
       senteHand.style.height = boardSize + "px";
       goteHand.style.height = boardSize + "px";
+      
+      // 駒台のタイマーサイズも調整
+      updateHandTimersSize(boardSize);
     } else {
       // 通常時は元のサイズに戻す
       boardContainer.style.width = "450px";
       boardContainer.style.height = "450px";
       senteHand.style.height = "450px";
       goteHand.style.height = "450px";
+      
+      // 駒台のタイマーサイズも元に戻す
+      updateHandTimersSize(450);
     }
     // 持ち駒のサイズも更新
     updateHandPiecesSize();
+  }
+
+  function updateHandTimersSize(boardSize) {
+    const senteHandTimer = document.getElementById("sente-hand-timer");
+    const goteHandTimer = document.getElementById("gote-hand-timer");
+    
+    // ボードサイズに比例してタイマーサイズを調整
+    const fontSize = Math.max(8, Math.min(14, boardSize / 40));
+    const padding = Math.max(2, Math.min(6, boardSize / 100));
+    
+    if (senteHandTimer) {
+      senteHandTimer.style.fontSize = fontSize + "px";
+      senteHandTimer.style.padding = padding + "px " + (padding * 2) + "px";
+    }
+    
+    if (goteHandTimer) {
+      goteHandTimer.style.fontSize = fontSize + "px";
+      goteHandTimer.style.padding = padding + "px " + (padding * 2) + "px";
+    }
   }
   
   document.addEventListener("fullscreenchange", updateFullScreenLayout);
