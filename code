@@ -801,6 +801,9 @@
         <button onclick="exitReplayMode()" style="margin: 2px 2px 2px 20px; padding: 5px 10px; background-color: #ff4444; color: white;">棋譜再生終了</button>
       </div>
     `;
+    // コントロールを再描画するたびに手数表示を更新
+    const old = document.getElementById("replay-controls");
+    if (old) old.remove();
     
     replayControls.innerHTML = controlsHTML;
     
