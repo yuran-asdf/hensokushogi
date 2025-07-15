@@ -746,6 +746,7 @@
       gameState.replayPosition--;
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
+      showReplayControls();
       updateMessage();
     }
   }
@@ -755,6 +756,7 @@
       gameState.replayPosition++;
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
+      showReplayControls();
       updateMessage();
     }
   }
@@ -764,6 +766,7 @@
       gameState.replayPosition = 0;
       restoreGameState(gameState.gameHistory[0]);
       renderBoard();
+      showReplayControls();
       updateMessage();
     }
   }
@@ -773,6 +776,7 @@
       gameState.replayPosition = gameState.gameHistory.length - 1;
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
+      showReplayControls();
       updateMessage();
     }
   }
@@ -1227,11 +1231,13 @@
         alert(`${getRoleName(piece.owner)}の勝ちです！影武者駒を取りました。`);
         return;
       }
+      // 取る直前の状態を保存
+      saveGameState();
       capturePiece(target); 
+    } else {
+      // 駒の移動を行う前に現在の状態を保存（棋譜再生時は保存しない）
+      saveGameState();
     }
-    
-    // 駒の移動を行う前に現在の状態を保存（棋譜再生時は保存しない）
-    saveGameState();
 
     gameState.board[toRow][toCol] = piece;
     gameState.board[fromRow][fromCol] = null;
