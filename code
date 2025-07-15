@@ -717,7 +717,7 @@
     saveGameState(); // 最新局面も保存
     if (confirm("棋譜再生モードに移行しますか？")) {
       gameState.replayMode = true;
-      gameState.replayPosition = 0;
+      gameState.replayPosition = gameState.gameHistory.length - 1;
       pauseTimer();
       showReplayControls();
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
@@ -787,7 +787,7 @@
     replayControls.style.backgroundColor = "#f0f0f0";
     replayControls.style.borderRadius = "5px";
     
-    let moveNum = (gameState.replayPosition >= 0) ? gameState.replayPosition + 1 : 0;
+    let moveNum = (gameState.replayPosition >= 0) ? (gameState.replayPosition + 1) : "";
     const controlsHTML = `
       <div style="margin-bottom: 10px;">
         <strong>棋譜再生モード</strong> 
