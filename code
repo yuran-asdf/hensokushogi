@@ -1472,12 +1472,10 @@
           }
         }
         
+        // 駒を打つ前の状態を保存
+        saveGameState();
         dropPiece(gameState.selected, r, c);
         gameState.moveCount++;
-        
-        // 手番を変更する前の状態を保存
-        saveGameState();
-        
         // 手番を変更し、選択状態をクリア
         switchTurn();
         gameState.selected = null;
