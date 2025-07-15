@@ -594,21 +594,19 @@
   // --- 棋譜再生機能を1から再設計 ---
   function saveGameState() {
     if (gameState.replayMode) return;
-    // 1手ごとに完全な状態を保存
-    const stateToSave = JSON.stringify({
-      board: gameState.board,
+    // 盤面・持ち駒・手番などをディープコピー
+    const snapshot = {
+      board: JSON.parse(JSON.stringify(gameState.board)),
+      senteHand: JSON.parse(JSON.stringify(gameState.senteHand)),
+      goteHand: JSON.parse(JSON.stringify(gameState.goteHand)),
       activePlayer: gameState.activePlayer,
-      senteHand: gameState.senteHand,
-      goteHand: gameState.goteHand,
       moveCount: gameState.moveCount,
       moveCountInTurn: gameState.moveCountInTurn,
-      shadowPieces: gameState.shadowPieces,
+      shadowPieces: JSON.parse(JSON.stringify(gameState.shadowPieces)),
       pieceIdCounter: gameState.pieceIdCounter,
-      undoUsed: gameState.undoUsed,
       swapped: swapped
-    });
-    // 毎手必ず状態を保存する（重複保存による実害はない）
-    gameState.gameHistory.push(stateToSave);
+    };
+    gameState.gameHistory.push(snapshot);
   }
 
   function canUndo() {
@@ -696,20 +694,17 @@
   }
 
   function restoreGameState(stateStr) {
-    const state = JSON.parse(stateStr);
-    gameState.board = JSON.parse(JSON.stringify(state.board));
-    gameState.activePlayer = state.activePlayer;
-    gameState.senteHand = JSON.parse(JSON.stringify(state.senteHand));
-    gameState.goteHand = JSON.parse(JSON.stringify(state.goteHand));
-    gameState.moveCount = state.moveCount;
-    gameState.moveCountInTurn = state.moveCountInTurn;
-    gameState.shadowPieces = JSON.parse(JSON.stringify(state.shadowPieces));
-    gameState.pieceIdCounter = state.pieceIdCounter;
-    gameState.undoUsed = JSON.parse(JSON.stringify(state.undoUsed));
+    const snapshot = stateStr;
+    gameState.board = JSON.parse(JSON.stringify(snapshot.board));
+    gameState.senteHand = JSON.parse(JSON.stringify(snapshot.senteHand));
+    gameState.goteHand = JSON.parse(JSON.stringify(snapshot.goteHand));
+    gameState.activePlayer = snapshot.activePlayer;
+    gameState.moveCount = snapshot.moveCount;
+    gameState.moveCountInTurn = snapshot.moveCountInTurn;
+    gameState.shadowPieces = JSON.parse(JSON.stringify(snapshot.shadowPieces));
+    gameState.pieceIdCounter = snapshot.pieceIdCounter;
+    swapped = snapshot.swapped;
     gameState.selected = null;
-    if (state.swapped !== undefined) {
-      swapped = state.swapped;
-    }
     updateMessage();
     updateRoleDisplays();
   }
@@ -719,9 +714,10 @@
       alert("棋譜がありません。");
       return;
     }
+    saveGameState(); // 最新局面も保存
     if (confirm("棋譜再生モードに移行しますか？")) {
       gameState.replayMode = true;
-      gameState.replayPosition = gameState.gameHistory.length - 1;
+      gameState.replayPosition = 0;
       pauseTimer();
       showReplayControls();
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
@@ -731,10 +727,8 @@
   }
 
   function exitReplayMode() {
-    // 棋譜再生終了時は再生中の盤面・手番に戻す
-    if (gameState.replayMode && gameState.replayPosition >= 0 && gameState.gameHistory.length > 0) {
-      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
-    } else if (gameState.gameHistory.length > 0) {
+    // 棋譜再生終了時は最新の盤面に戻す
+    if (gameState.gameHistory.length > 0) {
       restoreGameState(gameState.gameHistory[gameState.gameHistory.length - 1]);
     }
     gameState.replayMode = false;
@@ -762,9 +756,6 @@
       restoreGameState(gameState.gameHistory[gameState.replayPosition]);
       renderBoard();
       updateMessage();
-    } else if (gameState.replayPosition === gameState.gameHistory.length - 1) {
-      // すでに最新局面なら何もしない（ただし参照はできる）
-      // これにより最新局面も他と同じように参照できる
     }
   }
 
