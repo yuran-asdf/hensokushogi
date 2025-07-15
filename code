@@ -553,8 +553,7 @@
     function updateMessage() {
       let message;
       if (gameState.replayMode) {
-        let moveNum = (gameState.replayPosition >= 0) ? gameState.replayPosition + 1 : 0;
-        message = `棋譜再生モード - 手数: ${moveNum}/${gameState.gameHistory.length}`;
+        message = "棋譜再生モード";
       } else if (gameState.setupPhase) {
         const player = getRoleName(gameState.setupPhase);
         const area = gameState.setupPhase === "sente" ? "6,7,8段目" : "1,2,3段目";
@@ -608,10 +607,8 @@
       undoUsed: gameState.undoUsed,
       swapped: swapped
     });
-    // 直前と同じ状態は保存しない
-    if (gameState.gameHistory.length === 0 || gameState.gameHistory[gameState.gameHistory.length-1] !== stateToSave) {
-      gameState.gameHistory.push(stateToSave);
-    }
+    // 毎手必ず状態を保存する（重複保存による実害はない）
+    gameState.gameHistory.push(stateToSave);
   }
 
   function canUndo() {
