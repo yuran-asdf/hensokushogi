@@ -727,8 +727,10 @@
   }
 
   function exitReplayMode() {
-    // 棋譜再生終了時は最新の盤面に戻す
-    if (gameState.gameHistory.length > 0) {
+    // 棋譜再生終了時は、再生中に見ていた盤面・手番から再開
+    if (gameState.replayPosition >= 0 && gameState.gameHistory.length > 0) {
+      restoreGameState(gameState.gameHistory[gameState.replayPosition]);
+    } else if (gameState.gameHistory.length > 0) {
       restoreGameState(gameState.gameHistory[gameState.gameHistory.length - 1]);
     }
     gameState.replayMode = false;
